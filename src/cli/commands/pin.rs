@@ -40,7 +40,7 @@ pub async fn execute(package: &str, output: &Output) -> Result<()> {
         Output::package_name(&name),
         Output::version(&version_to_pin)
     ));
-    output.hint("This package will be skipped during 'coldbrew upgrade'");
+    output.hint("This package will be skipped during 'crew upgrade'");
 
     Ok(())
 }

@@ -14,7 +14,7 @@ pub async fn execute(query: &str, extended: bool, output: &Output) -> Result<()>
 
     if results.is_empty() {
         output.warning(&format!("No packages found matching '{}'", query));
-        output.hint("Try 'coldbrew update' to refresh the package index");
+        output.hint("Try 'crew update' to refresh the package index");
         return Ok(());
     }
 

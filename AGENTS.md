@@ -14,9 +14,9 @@ A Homebrew-compatible package manager in Rust. Downloads bottles from Homebrew's
 **Use `--help` to discover commands and flags.** The CLI is self-documenting:
 
 ```bash
-coldbrew --help              # List all commands
-coldbrew install --help      # Show flags for install
-coldbrew cache --help        # Show cache subcommands
+crew --help              # List all commands
+crew install --help      # Show flags for install
+crew cache --help        # Show cache subcommands
 ```
 
 Do not memorize commands. Always check `--help` for the current interface.

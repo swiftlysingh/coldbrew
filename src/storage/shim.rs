@@ -39,13 +39,13 @@ impl ShimManager {
 
     /// Create a single shim
     fn create_shim(&self, shim_path: &PathBuf, package: &str, version: &str, binary: &str) -> Result<()> {
-        // The shim is a shell script that calls coldbrew to resolve and exec the binary
+        // The shim is a shell script that calls crew to resolve and exec the binary
         let shim_content = format!(
             r#"#!/bin/sh
 # Coldbrew shim for {package}/{binary}
 # This shim resolves the correct version and executes the real binary
 
-exec coldbrew exec {package} {binary} "$@"
+exec crew exec {package} {binary} "$@"
 "#,
             package = package,
             binary = binary,
@@ -196,7 +196,7 @@ mod tests {
 
         let content = fs::read_to_string(&shims[0]).unwrap();
         assert!(content.contains("# Coldbrew shim"));
-        assert!(content.contains("coldbrew exec jq jq"));
+        assert!(content.contains("crew exec jq jq"));
     }
 
     #[test]

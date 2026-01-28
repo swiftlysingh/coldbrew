@@ -20,7 +20,7 @@ pub async fn execute(force: bool, output: &Output) -> Result<()> {
     config.save(&config_path)?;
 
     output.success(&format!("Created {}", config_path.display()));
-    output.hint("Edit coldbrew.toml to add packages, then run 'coldbrew lock'");
+    output.hint("Edit coldbrew.toml to add packages, then run 'crew lock'");
 
     Ok(())
 }

@@ -60,7 +60,7 @@ insta = "1.41"
 predicates = "3.1"
 
 [[bin]]
-name = "coldbrew"
+name = "crew"
 path = "src/main.rs"
 
 [profile.release]

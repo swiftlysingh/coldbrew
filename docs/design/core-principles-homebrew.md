@@ -28,16 +28,16 @@ engineering guidelines for building and evolving the Coldbrew CLI.
 ### Auto-Updates and Forced Upgrades
 **Problem:** Homebrew can update or upgrade implicitly.  
 **Coldbrew behavior:**
-- `coldbrew install <pkg>` only installs the requested package.
-- `coldbrew update` only refreshes the local index.
-- `coldbrew upgrade` is interactive and shows a plan before applying.
-- `coldbrew upgrade --yes` is for CI only.
+- `crew install <pkg>` only installs the requested package.
+- `crew update` only refreshes the local index.
+- `crew upgrade` is interactive and shows a plan before applying.
+- `crew upgrade --yes` is for CI only.
 - No auto-updates, ever.
 
 ### Version Pinning and Multiple Versions
 **Problem:** Global upgrades and single-version installs complicate reproducibility.  
 **Coldbrew behavior:**
-- Multiple versions can coexist: `coldbrew install node@18 node@22`.
+- Multiple versions can coexist: `crew install node@18 node@22`.
 - `coldbrew.toml` defines per-project dependencies.
 - Auto-detect version files (nvm, python, node, etc.) to reduce friction.
 - `coldbrew.lock` pins exact versions and checksums.
@@ -56,15 +56,15 @@ engineering guidelines for building and evolving the Coldbrew CLI.
 - Upgrade only what the user asks for.
 - Dependencies stay pinned unless explicitly upgraded.
 - Warn before cascades and show impact.
-- Opt-in cascade: `coldbrew upgrade --cascade`.
-- Tools: `coldbrew deps <pkg>`, `coldbrew dependents <pkg>`.
+- Opt-in cascade: `crew upgrade --cascade`.
+- Tools: `crew deps <pkg>`, `crew dependents <pkg>`.
 
 ### Cleanup and Garbage Collection
 **Problem:** Auto-cleanups can delete needed versions or caches.  
 **Coldbrew behavior:**
-- `coldbrew gc` is interactive by default.
-- `coldbrew gc --yes` for non-interactive environments.
-- Cache cleanup is separate: `coldbrew cache clean`.
+- `crew gc` is interactive by default.
+- `crew gc --yes` for non-interactive environments.
+- Cache cleanup is separate: `crew cache clean`.
 - No auto-removal in the background.
 
 ### Performance
@@ -98,7 +98,7 @@ engineering guidelines for building and evolving the Coldbrew CLI.
 ### Version Resolution Order
 - `coldbrew.toml` project dependencies.
 - Detected version files (nvm, python, node, etc.).
-- Global defaults (`coldbrew default <pkg>@<ver>`).
+- Global defaults (`crew default <pkg>@<ver>`).
 - Latest installed version (last resort).
 
 ### Bottle Selection Policy
@@ -113,7 +113,7 @@ engineering guidelines for building and evolving the Coldbrew CLI.
 
 ### Shim Management
 - Use shims to select versions per project.
-- `coldbrew` should act as a shim when invoked by package name.
+- `crew` should act as a shim when invoked by package name.
 - Resolution order matches the version resolution rules above.
 
 ### Dependency Isolation

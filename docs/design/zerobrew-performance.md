@@ -110,7 +110,7 @@ Last updated: January 28, 2026
 - Keep overall dependency order for correctness but allow independent packages to pipeline.
 
 ## Design Constraints (Coldbrew Principles)
-- No auto-updates. Index fetch is explicit (`coldbrew update`).
+- No auto-updates. Index fetch is explicit (`crew update`).
 - Install should not implicitly upgrade.
 - `coldbrew.lock` must remain authoritative for project installs.
 - Bottles only; no source builds.
@@ -145,7 +145,7 @@ Last updated: January 28, 2026
 ## Compatibility / Migration
 - Introduce store without breaking existing cellar installs.
 - If `store/` absent, perform direct extraction (legacy fallback).
-- Provide `coldbrew gc` extension to prune unused store entries.
+- Provide `crew gc` extension to prune unused store entries.
 
 ## Metrics and Success Criteria
 - Cold install speedup vs current baseline (target: 1.5x+ median).
