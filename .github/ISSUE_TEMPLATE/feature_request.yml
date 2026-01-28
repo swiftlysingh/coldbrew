@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a new feature or improvement
+title: "Feature: "
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One-sentence summary of the feature.
+      placeholder: "Add X so that Y."
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: Why is this needed? What problem does it solve?
+      placeholder: "Users struggle with ... and this would ..."
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is in scope for this feature?
+      placeholder: "CLI flags, storage updates, compatibility notes..."
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Out of scope
+      description: What is explicitly not part of this feature?
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Bullet list of done conditions.
+      placeholder: "- [ ] ..."
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / links
+      description: Related issues, docs, or external references.
