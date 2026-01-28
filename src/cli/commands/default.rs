@@ -56,7 +56,7 @@ pub async fn execute(package: &str, output: &Output) -> Result<()> {
 
         if default.is_none() {
             output.hint(&format!(
-                "Set a default with 'coldbrew default {}@<version>'",
+                "Set a default with 'crew default {}@<version>'",
                 name
             ));
         }

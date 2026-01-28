@@ -51,7 +51,7 @@ pub async fn execute(binary: &str, output: &Output) -> Result<()> {
     }
 
     output.warning(&format!("Binary '{}' not found in any installed package", binary));
-    output.hint("Use 'coldbrew search <name>' to find packages");
+    output.hint("Use 'crew search <name>' to find packages");
 
     Ok(())
 }

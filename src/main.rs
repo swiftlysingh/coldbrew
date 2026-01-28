@@ -146,7 +146,7 @@ async fn run() -> Result<()> {
 
         Some(Commands::Completions { shell }) => {
             let mut cmd = Cli::command();
-            generate(shell, &mut cmd, "coldbrew", &mut io::stdout());
+            generate(shell, &mut cmd, "crew", &mut io::stdout());
         }
 
         Some(Commands::Exec {

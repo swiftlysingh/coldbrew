@@ -31,7 +31,7 @@ pub async fn execute(tap: Option<&str>, remove: bool, output: &Output) -> Result
 
             if taps.is_empty() {
                 output.info("No taps installed");
-                output.hint("Add a tap with 'coldbrew tap user/repo'");
+                output.hint("Add a tap with 'crew tap user/repo'");
             } else {
                 output.info(&format!("{} taps installed:", taps.len()));
                 for tap in taps {

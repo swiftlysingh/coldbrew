@@ -83,7 +83,7 @@ fn check_path(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
         );
     } else {
         warnings.push(format!(
-            "Coldbrew bin directory not in PATH. Run 'coldbrew shell' for setup instructions"
+            "Coldbrew bin directory not in PATH. Run 'crew shell' for setup instructions"
         ));
         println!(
             "  {} PATH: {} not in PATH",
@@ -148,7 +148,7 @@ fn check_shims(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
 
             if broken > 0 {
                 warnings.push(format!(
-                    "{} broken shim(s) found. Run 'coldbrew gc' to clean up",
+                    "{} broken shim(s) found. Run 'crew gc' to clean up",
                     broken
                 ));
                 println!(
@@ -179,7 +179,7 @@ fn check_cache(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
             // Warn if cache is over 1GB
             if size > 1024 * 1024 * 1024 {
                 warnings.push(format!(
-                    "Cache is large ({}). Consider running 'coldbrew cache clean'",
+                    "Cache is large ({}). Consider running 'crew cache clean'",
                     format_bytes(size)
                 ));
                 println!(
@@ -242,7 +242,7 @@ fn check_index(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
     let index_path = paths.formula_index();
 
     if !index_path.exists() {
-        warnings.push("Package index not found. Run 'coldbrew update'".to_string());
+        warnings.push("Package index not found. Run 'crew update'".to_string());
         println!(
             "  {} Index: Not initialized",
             console::style("!").yellow()
@@ -261,7 +261,7 @@ fn check_index(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
 
                 if days > 7 {
                     warnings.push(format!(
-                        "Package index is {} days old. Consider running 'coldbrew update'",
+                        "Package index is {} days old. Consider running 'crew update'",
                         days
                     ));
                     println!(

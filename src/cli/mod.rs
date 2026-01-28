@@ -8,7 +8,7 @@ use clap_complete::Shell;
 
 /// Coldbrew - A Homebrew-compatible package manager
 #[derive(Parser)]
-#[command(name = "coldbrew")]
+#[command(name = "crew")]
 #[command(author, version, about, long_about = None)]
 #[command(propagate_version = true)]
 pub struct Cli {

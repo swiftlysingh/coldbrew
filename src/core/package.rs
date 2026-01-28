@@ -177,7 +177,7 @@ impl PackageMetadata {
             package,
             formula_json: None,
             receipt: InstallReceipt {
-                installed_by: format!("coldbrew {}", env!("CARGO_PKG_VERSION")),
+                installed_by: format!("crew {}", env!("CARGO_PKG_VERSION")),
                 installed_at: Utc::now(),
                 source,
                 checksum_verified: true,
