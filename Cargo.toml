@@ -1,0 +1,69 @@
+[package]
+name = "coldbrew"
+version = "0.1.0"
+edition = "2021"
+description = "A Homebrew-compatible package manager - user-controlled, fast, and reproducible"
+authors = ["Coldbrew Contributors"]
+license = "MIT"
+repository = "https://github.com/coldbrew-pkg/coldbrew"
+keywords = ["package-manager", "homebrew", "cli"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+# CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# Async
+tokio = { version = "1.43", features = ["rt-multi-thread", "macros", "fs", "io-util", "process"] }
+
+# HTTP
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "gzip", "stream"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Git
+git2 = { version = "0.20", features = ["https", "ssh"] }
+
+# UI
+indicatif = "0.17"
+console = "0.15"
+dialoguer = "0.11"
+
+# Errors
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+semver = "1.0"
+sha2 = "0.10"
+hex = "0.4"
+flate2 = "1.0"
+tar = "0.4"
+walkdir = "2.5"
+directories = "5.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+futures-util = "0.3"
+clap_complete = "4.5"
+nix = { version = "0.29", features = ["fs"] }
+
+[dev-dependencies]
+tempfile = "3.14"
+wiremock = "0.6"
+tempfile = "3.14"
+assert_cmd = "2.0"
+insta = "1.41"
+predicates = "3.1"
+
+[[bin]]
+name = "coldbrew"
+path = "src/main.rs"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
