@@ -10,6 +10,11 @@ A Homebrew-compatible package manager in Rust - user-controlled, fast, and repro
 - **Shim-based**: Like mise, resolves versions based on project configuration
 - **Homebrew-compatible**: Uses Homebrew's formula index and bottles
 
+## Design Docs
+
+- Core principles, CLI behavior, and Homebrew integration: `docs/design/core-principles-homebrew.md`
+- Performance roadmap and zerobrew-inspired ideas: `docs/design/zerobrew-performance.md`
+
 ## Installation
 
 ```bash
