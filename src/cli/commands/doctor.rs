@@ -141,7 +141,7 @@ fn check_shims(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
 
             if broken > 0 {
                 warnings.push(format!(
-                    "{} broken shim(s) found. Run 'crew clean' to clean up",
+                    "{} broken shim(s) found. Run 'crew space clean' to clean up",
                     broken
                 ));
                 println!(
@@ -172,7 +172,7 @@ fn check_cache(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
             // Warn if cache is over 1GB
             if size > 1024 * 1024 * 1024 {
                 warnings.push(format!(
-                    "Cache is large ({}). Consider running 'crew clean'",
+                    "Cache is large ({}). Consider running 'crew space clean'",
                     format_bytes(size)
                 ));
                 println!(

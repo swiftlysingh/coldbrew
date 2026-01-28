@@ -50,10 +50,7 @@ pub async fn execute(binary: &str, output: &Output) -> Result<()> {
         }
     }
 
-    output.warning(&format!(
-        "Binary '{}' not found in any installed package",
-        binary
-    ));
+    output.warning(&format!("Binary '{}' not found in any installed package", binary));
     output.hint("Use 'crew search <name>' to find packages");
 
     Ok(())
