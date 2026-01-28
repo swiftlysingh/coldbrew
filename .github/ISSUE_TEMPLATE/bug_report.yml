@@ -1,0 +1,49 @@
+name: Bug report
+description: Report something broken or incorrect
+title: "Bug: "
+labels: ["type:bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is broken?
+      placeholder: "coldbrew install X fails with ..."
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Provide minimal, exact steps to reproduce.
+      placeholder: |
+        1) coldbrew update
+        2) coldbrew install jq
+        3) ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: "Install completes successfully"
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: "Fails with error ..."
+  - type: input
+    id: version
+    attributes:
+      label: Coldbrew version
+      placeholder: "coldbrew --version"
+  - type: input
+    id: os
+    attributes:
+      label: OS / Arch
+      placeholder: "macOS 14.5 arm64 / Ubuntu 22.04 x86_64"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / output
+      description: Paste relevant logs or error output.
