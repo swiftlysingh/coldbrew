@@ -33,19 +33,19 @@ cargo build --release
 
 ```bash
 # Update the package index
-coldbrew update
+crew update
 
 # Search for packages
-coldbrew search jq
+crew search jq
 
 # Install a package
-coldbrew install jq
+crew install jq
 
 # List installed packages
-coldbrew list
+crew list
 
 # Show package info
-coldbrew info jq
+crew info jq
 ```
 
 ## Project Configuration
@@ -65,8 +65,8 @@ rust = "1.75"
 Then run:
 
 ```bash
-coldbrew lock    # Generate lockfile
-coldbrew install # Install from lockfile
+crew lock    # Generate lockfile
+crew install # Install from lockfile
 ```
 
 ## Commands

@@ -49,13 +49,13 @@ pub enum ColdbrewError {
     #[error("Invalid tap format: '{0}'. Expected 'user/repo'")]
     InvalidTapFormat(String),
 
-    #[error("Lockfile not found. Run 'coldbrew lock' first")]
+    #[error("Lockfile not found. Run 'crew lock' first")]
     LockfileNotFound,
 
-    #[error("Lockfile is out of sync with coldbrew.toml. Run 'coldbrew lock' to update")]
+    #[error("Lockfile is out of sync with coldbrew.toml. Run 'crew lock' to update")]
     LockfileOutOfSync,
 
-    #[error("Project file not found. Run 'coldbrew init' first")]
+    #[error("Project file not found. Run 'crew init' first")]
     ProjectNotFound,
 
     #[error("Path not found: {0}")]
@@ -73,10 +73,10 @@ pub enum ColdbrewError {
     #[error("Cache is corrupted: {0}")]
     CacheCorrupted(String),
 
-    #[error("Index is not initialized. Run 'coldbrew update' first")]
+    #[error("Index is not initialized. Run 'crew update' first")]
     IndexNotInitialized,
 
-    #[error("Index is stale. Run 'coldbrew update' to refresh")]
+    #[error("Index is stale. Run 'crew update' to refresh")]
     IndexStale,
 
     #[error("Package '{0}' is pinned and cannot be upgraded")]
@@ -118,25 +118,25 @@ impl ColdbrewError {
     pub fn suggestion(&self) -> Option<&str> {
         match self {
             ColdbrewError::PackageNotFound(_) => {
-                Some("Try 'coldbrew search <term>' to find available packages")
+                Some("Try 'crew search <term>' to find available packages")
             }
             ColdbrewError::IndexNotInitialized | ColdbrewError::IndexStale => {
-                Some("Run 'coldbrew update' to fetch the latest package index")
+                Some("Run 'crew update' to fetch the latest package index")
             }
             ColdbrewError::LockfileNotFound => {
-                Some("Run 'coldbrew lock' to create a lockfile from coldbrew.toml")
+                Some("Run 'crew lock' to create a lockfile from coldbrew.toml")
             }
             ColdbrewError::ProjectNotFound => {
-                Some("Run 'coldbrew init' to create a coldbrew.toml in this directory")
+                Some("Run 'crew init' to create a coldbrew.toml in this directory")
             }
             ColdbrewError::NoBottleAvailable { .. } => {
                 Some("This package may require building from source, which is not yet supported")
             }
             ColdbrewError::PackagePinned(_) => {
-                Some("Use 'coldbrew unpin <package>' to allow upgrades")
+                Some("Use 'crew unpin <package>' to allow upgrades")
             }
             ColdbrewError::ChecksumMismatch { .. } => {
-                Some("Try running 'coldbrew cache clean' and retry the installation")
+                Some("Try running 'crew cache clean' and retry the installation")
             }
             _ => None,
         }

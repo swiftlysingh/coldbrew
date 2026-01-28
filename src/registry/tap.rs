@@ -178,7 +178,7 @@ impl TapManager {
 
         // Fast-forward merge
         let mut reference = repo.head()?;
-        reference.set_target(fetch_commit.id(), "coldbrew tap update")?;
+        reference.set_target(fetch_commit.id(), "crew tap update")?;
         repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
 
         Ok(())

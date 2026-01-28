@@ -28,7 +28,7 @@ pub async fn execute(names_only: bool, versions: Option<&str>, output: &Output) 
 
         if packages.is_empty() {
             output.info("No packages installed");
-            output.hint("Use 'coldbrew install <package>' to install packages");
+            output.hint("Use 'crew install <package>' to install packages");
             return Ok(());
         }
 
