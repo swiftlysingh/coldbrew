@@ -40,9 +40,11 @@ impl Output {
 
     /// Print a warning message
     pub fn warning(&self, message: &str) {
-        let _ = self
-            .term
-            .write_line(&format!("{} {}", style("Warning:").yellow().bold(), message));
+        let _ = self.term.write_line(&format!(
+            "{} {}",
+            style("Warning:").yellow().bold(),
+            message
+        ));
     }
 
     /// Print an error message
@@ -141,11 +143,7 @@ impl Output {
             return;
         }
 
-        println!(
-            "{} {}",
-            style(name).green().bold(),
-            style(version).cyan()
-        );
+        println!("{} {}", style(name).green().bold(), style(version).cyan());
 
         if let Some(desc) = desc {
             println!("  {}", desc);

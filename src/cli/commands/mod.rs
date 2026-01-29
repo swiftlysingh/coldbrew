@@ -2,8 +2,8 @@
 
 pub mod cache;
 pub mod default;
-pub mod deps;
 pub mod dependents;
+pub mod deps;
 pub mod doctor;
 pub mod gc;
 pub mod info;

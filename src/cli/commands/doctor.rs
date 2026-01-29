@@ -60,11 +60,7 @@ pub async fn execute(output: &Output) -> Result<()> {
 
 fn check_platform() -> Result<()> {
     let platform = Platform::detect()?;
-    println!(
-        "  {} Platform: {}",
-        console::style("✓").green(),
-        platform
-    );
+    println!("  {} Platform: {}", console::style("✓").green(), platform);
     println!(
         "    Bottle tag: {}",
         console::style(platform.bottle_tag()).dim()
@@ -110,11 +106,7 @@ fn check_permissions(paths: &Paths, _output: &Output, issues: &mut Vec<String>) 
                     let writable = (mode & 0o200) != 0;
 
                     if writable {
-                        println!(
-                            "  {} {}: OK",
-                            console::style("✓").green(),
-                            name
-                        );
+                        println!("  {} {}: OK", console::style("✓").green(), name);
                     } else {
                         issues.push(format!("{} directory is not writable", name));
                     }
@@ -124,11 +116,7 @@ fn check_permissions(paths: &Paths, _output: &Output, issues: &mut Vec<String>) 
                 }
             }
         } else {
-            println!(
-                "  {} {}: Not created yet",
-                console::style("○").dim(),
-                name
-            );
+            println!("  {} {}: Not created yet", console::style("○").dim(), name);
         }
     }
 }
@@ -142,7 +130,11 @@ fn check_shims(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
             for shim in &shims {
                 // Check if the target package still exists
                 let cellar = Cellar::new(paths.clone());
-                if cellar.get_versions(&shim.package).unwrap_or_default().is_empty() {
+                if cellar
+                    .get_versions(&shim.package)
+                    .unwrap_or_default()
+                    .is_empty()
+                {
                     broken += 1;
                 }
             }
@@ -244,10 +236,7 @@ fn check_index(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
 
     if !index_path.exists() {
         warnings.push("Package index not found. Run 'crew update'".to_string());
-        println!(
-            "  {} Index: Not initialized",
-            console::style("!").yellow()
-        );
+        println!("  {} Index: Not initialized", console::style("!").yellow());
         return;
     }
 
@@ -271,11 +260,7 @@ fn check_index(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
                         days
                     );
                 } else {
-                    println!(
-                        "  {} Index: {} days old",
-                        console::style("✓").green(),
-                        days
-                    );
+                    println!("  {} Index: {} days old", console::style("✓").green(), days);
                 }
             }
         }

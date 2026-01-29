@@ -41,9 +41,8 @@ impl Paths {
 
         for dir in dirs {
             if !dir.exists() {
-                std::fs::create_dir_all(dir).map_err(|_| {
-                    ColdbrewError::DirectoryCreationFailed(dir.to_path_buf())
-                })?;
+                std::fs::create_dir_all(dir)
+                    .map_err(|_| ColdbrewError::DirectoryCreationFailed(dir.to_path_buf()))?;
             }
         }
 
@@ -227,7 +226,10 @@ mod tests {
         let paths = Paths::with_root(temp.path().to_path_buf());
 
         let pkg_path = paths.cellar_package("jq", "1.7.1");
-        assert_eq!(pkg_path, temp.path().join("cellar").join("jq").join("1.7.1"));
+        assert_eq!(
+            pkg_path,
+            temp.path().join("cellar").join("jq").join("1.7.1")
+        );
     }
 
     #[test]

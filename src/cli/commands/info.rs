@@ -11,7 +11,8 @@ pub async fn execute(package: &str, format: &str, output: &Output) -> Result<()>
     let index = Index::new(paths.clone());
     let cellar = Cellar::new(paths);
 
-    let formula = index.get_formula(package)?
+    let formula = index
+        .get_formula(package)?
         .ok_or_else(|| ColdbrewError::PackageNotFound(package.to_string()))?;
 
     if format == "json" {
@@ -61,11 +62,7 @@ pub async fn execute(package: &str, format: &str, output: &Output) -> Result<()>
     // Bottle availability
     let tags = formula.available_bottle_tags();
     if !tags.is_empty() {
-        println!(
-            "{}: {}",
-            console::style("Bottles").bold(),
-            tags.join(", ")
-        );
+        println!("{}: {}", console::style("Bottles").bold(), tags.join(", "));
     }
 
     // Flags
@@ -80,11 +77,7 @@ pub async fn execute(package: &str, format: &str, output: &Output) -> Result<()>
         flags.push("disabled");
     }
     if !flags.is_empty() {
-        println!(
-            "{}: {}",
-            console::style("Flags").bold(),
-            flags.join(", ")
-        );
+        println!("{}: {}", console::style("Flags").bold(), flags.join(", "));
     }
 
     // Caveats

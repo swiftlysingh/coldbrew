@@ -138,9 +138,7 @@ impl ColdbrewError {
             ColdbrewError::NoBottleAvailable { .. } => {
                 Some("This package may require building from source, which is not yet supported")
             }
-            ColdbrewError::PackagePinned(_) => {
-                Some("Use 'crew unpin <package>' to allow upgrades")
-            }
+            ColdbrewError::PackagePinned(_) => Some("Use 'crew unpin <package>' to allow upgrades"),
             ColdbrewError::ChecksumMismatch { .. } => {
                 Some("Try running 'crew cache clean' and retry the installation")
             }

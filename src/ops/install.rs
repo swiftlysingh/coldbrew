@@ -124,7 +124,15 @@ pub async fn install(
             installed_for: if is_root { None } else { Some(name) },
             force: is_root && force,
         };
-        let installed = install_single(&ctx, &pkg_name, target_version, formula, runtime_deps, options).await?;
+        let installed = install_single(
+            &ctx,
+            &pkg_name,
+            target_version,
+            formula,
+            runtime_deps,
+            options,
+        )
+        .await?;
 
         installed_versions.insert(pkg_name.clone(), installed.version.clone());
 
@@ -219,17 +227,18 @@ async fn install_single(
             platform: ctx.platform.bottle_tag(),
         })?;
 
-    ctx.output.debug(&format!("Using bottle tag: {}", bottle_tag));
+    ctx.output
+        .debug(&format!("Using bottle tag: {}", bottle_tag));
 
     let bottle_path = if let Some(cached) = ctx.cache.get_cached(name, version, &bottle_tag) {
         ctx.output.debug("Using cached bottle");
         cached
     } else {
         ctx.output.debug("Downloading bottle...");
-        let download_path = ctx.paths.downloads_dir().join(format!(
-            "{}-{}.{}.bottle.tar.gz",
-            name, version, bottle_tag
-        ));
+        let download_path = ctx
+            .paths
+            .downloads_dir()
+            .join(format!("{}-{}.{}.bottle.tar.gz", name, version, bottle_tag));
 
         std::fs::create_dir_all(ctx.paths.downloads_dir())?;
 
@@ -239,12 +248,12 @@ async fn install_single(
 
         ctx.ghcr
             .download_bottle(formula, bottle_file, &download_path, |downloaded, total| {
-            if total > 0 {
-                pb.set_length(total);
-            }
-            pb.set_position(downloaded);
-        })
-        .await?;
+                if total > 0 {
+                    pb.set_length(total);
+                }
+                pb.set_position(downloaded);
+            })
+            .await?;
 
         pb.finish_and_clear();
 

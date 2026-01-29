@@ -52,7 +52,13 @@ impl Cache {
     }
 
     /// Move a downloaded file to the cache
-    pub fn move_to_cache(&self, src: &Path, name: &str, version: &str, tag: &str) -> Result<PathBuf> {
+    pub fn move_to_cache(
+        &self,
+        src: &Path,
+        name: &str,
+        version: &str,
+        tag: &str,
+    ) -> Result<PathBuf> {
         self.init()?;
         let dest = self.bottle_path(name, version, tag);
         fs::rename(src, &dest)?;

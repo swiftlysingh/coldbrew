@@ -118,7 +118,11 @@ impl Cellar {
     }
 
     /// Extract a bottle tarball to the cellar
-    fn extract_bottle(&self, bottle_path: &std::path::Path, target_dir: &std::path::Path) -> Result<()> {
+    fn extract_bottle(
+        &self,
+        bottle_path: &std::path::Path,
+        target_dir: &std::path::Path,
+    ) -> Result<()> {
         use flate2::read::GzDecoder;
         use tar::Archive;
 
@@ -173,7 +177,9 @@ impl Cellar {
 
     /// Save package metadata
     pub fn save_metadata(&self, metadata: &PackageMetadata) -> Result<()> {
-        let path = self.paths.package_metadata(&metadata.package.name, &metadata.package.version);
+        let path = self
+            .paths
+            .package_metadata(&metadata.package.name, &metadata.package.version);
 
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;

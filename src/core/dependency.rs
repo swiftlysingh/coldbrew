@@ -50,7 +50,14 @@ impl DependencyResolver {
         let mut visited = HashSet::new();
         let mut in_progress = HashSet::new();
 
-        self.resolve_recursive(package_name, 0, true, &mut resolved, &mut visited, &mut in_progress)?;
+        self.resolve_recursive(
+            package_name,
+            0,
+            true,
+            &mut resolved,
+            &mut visited,
+            &mut in_progress,
+        )?;
 
         Ok(resolved)
     }
@@ -106,9 +113,10 @@ impl DependencyResolver {
 
     /// Get all dependencies for a package (without resolution order)
     pub fn get_dependencies(&self, package_name: &str) -> Result<Vec<String>> {
-        let formula = self.formulas.get(package_name).ok_or_else(|| {
-            ColdbrewError::PackageNotFound(package_name.to_string())
-        })?;
+        let formula = self
+            .formulas
+            .get(package_name)
+            .ok_or_else(|| ColdbrewError::PackageNotFound(package_name.to_string()))?;
 
         Ok(formula.dependencies.clone())
     }
@@ -124,9 +132,10 @@ impl DependencyResolver {
 
     /// Build a complete dependency tree (BFS)
     pub fn dependency_tree(&self, package_name: &str) -> Result<DependencyTree> {
-        let formula = self.formulas.get(package_name).ok_or_else(|| {
-            ColdbrewError::PackageNotFound(package_name.to_string())
-        })?;
+        let formula = self
+            .formulas
+            .get(package_name)
+            .ok_or_else(|| ColdbrewError::PackageNotFound(package_name.to_string()))?;
 
         let mut tree = DependencyTree {
             name: package_name.to_string(),
@@ -215,7 +224,10 @@ impl DependencyTree {
 
     fn pretty_print_recursive(&self, output: &mut String, prefix: &str, is_last: bool) {
         let connector = if is_last { "└── " } else { "├── " };
-        output.push_str(&format!("{}{}{} {}\n", prefix, connector, self.name, self.version));
+        output.push_str(&format!(
+            "{}{}{} {}\n",
+            prefix, connector, self.name, self.version
+        ));
 
         let child_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
         for (i, child) in self.children.iter().enumerate() {
@@ -227,8 +239,8 @@ impl DependencyTree {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::formula::{Formula, Versions};
     use crate::core::bottle::BottleSpec;
+    use crate::core::formula::{Formula, Versions};
     use std::collections::HashMap;
 
     fn make_formula(name: &str, deps: Vec<&str>) -> Formula {

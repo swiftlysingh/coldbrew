@@ -28,15 +28,9 @@ pub async fn execute(
                 .unwrap_or_default()
         ));
 
-        let result = ops::install::install(
-            &paths,
-            &name,
-            version.as_deref(),
-            skip_deps,
-            force,
-            output,
-        )
-        .await;
+        let result =
+            ops::install::install(&paths, &name, version.as_deref(), skip_deps, force, output)
+                .await;
 
         match result {
             Ok(installed) => {

@@ -49,7 +49,9 @@ impl VersionFileDetector {
             // Check for .nvmrc
             let nvmrc = current.join(".nvmrc");
             if nvmrc.exists() {
-                if let Some(v) = self.parse_simple_version_file(&nvmrc, "node", VersionFileType::Nvmrc)? {
+                if let Some(v) =
+                    self.parse_simple_version_file(&nvmrc, "node", VersionFileType::Nvmrc)?
+                {
                     versions.push(v);
                 }
             }
@@ -57,7 +59,11 @@ impl VersionFileDetector {
             // Check for .node-version
             let node_version = current.join(".node-version");
             if node_version.exists() {
-                if let Some(v) = self.parse_simple_version_file(&node_version, "node", VersionFileType::NodeVersion)? {
+                if let Some(v) = self.parse_simple_version_file(
+                    &node_version,
+                    "node",
+                    VersionFileType::NodeVersion,
+                )? {
                     versions.push(v);
                 }
             }
@@ -65,7 +71,11 @@ impl VersionFileDetector {
             // Check for .python-version
             let python_version = current.join(".python-version");
             if python_version.exists() {
-                if let Some(v) = self.parse_simple_version_file(&python_version, "python", VersionFileType::PythonVersion)? {
+                if let Some(v) = self.parse_simple_version_file(
+                    &python_version,
+                    "python",
+                    VersionFileType::PythonVersion,
+                )? {
                     versions.push(v);
                 }
             }
@@ -73,7 +83,11 @@ impl VersionFileDetector {
             // Check for .ruby-version
             let ruby_version = current.join(".ruby-version");
             if ruby_version.exists() {
-                if let Some(v) = self.parse_simple_version_file(&ruby_version, "ruby", VersionFileType::RubyVersion)? {
+                if let Some(v) = self.parse_simple_version_file(
+                    &ruby_version,
+                    "ruby",
+                    VersionFileType::RubyVersion,
+                )? {
                     versions.push(v);
                 }
             }
@@ -214,9 +228,15 @@ mod tests {
         let versions = detector.detect_all().unwrap();
 
         assert_eq!(versions.len(), 3);
-        assert!(versions.iter().any(|v| v.package == "node" && v.version == "18.17.0"));
-        assert!(versions.iter().any(|v| v.package == "python" && v.version == "3.11.0"));
-        assert!(versions.iter().any(|v| v.package == "ruby" && v.version == "3.2.0"));
+        assert!(versions
+            .iter()
+            .any(|v| v.package == "node" && v.version == "18.17.0"));
+        assert!(versions
+            .iter()
+            .any(|v| v.package == "python" && v.version == "3.11.0"));
+        assert!(versions
+            .iter()
+            .any(|v| v.package == "ruby" && v.version == "3.2.0"));
     }
 
     #[test]
