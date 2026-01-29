@@ -46,9 +46,8 @@ impl GhcrClient {
     }
 
     fn repository_from_url(url: &str) -> Result<String> {
-        let parsed = reqwest::Url::parse(url).map_err(|err| {
-            ColdbrewError::GhcrAuthFailed(format!("Invalid bottle URL: {}", err))
-        })?;
+        let parsed = reqwest::Url::parse(url)
+            .map_err(|err| ColdbrewError::GhcrAuthFailed(format!("Invalid bottle URL: {}", err)))?;
         let path = parsed.path();
         let prefix = "/v2/";
         let blobs = "/blobs/";
