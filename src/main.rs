@@ -127,10 +127,6 @@ async fn run() -> Result<()> {
             commands::link::execute_unlink(&package, &output).await?;
         }
 
-        Some(Commands::Shell { shell }) => {
-            commands::shell::execute(shell.as_deref(), &output).await?;
-        }
-
         Some(Commands::Doctor) => {
             commands::doctor::execute(&output).await?;
         }
