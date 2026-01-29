@@ -142,11 +142,6 @@ Last updated: January 28, 2026
 - On extraction failure: delete blob, retry (limit), then surface error with suggestion.
 - On store materialize failure: fallback to copy.
 
-## Compatibility / Migration
-- Introduce store without breaking existing cellar installs.
-- If `store/` absent, perform direct extraction (legacy fallback).
-- Provide `crew clean` extension to prune unused store entries.
-
 ## Metrics and Success Criteria
 - Cold install speedup vs current baseline (target: 1.5x+ median).
 - Warm reinstall speedup (target: 3x+ median).
