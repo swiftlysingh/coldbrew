@@ -95,10 +95,6 @@ async fn run() -> Result<()> {
             commands::default::execute(&package, &output).await?;
         }
 
-        Some(Commands::Deps { package, tree }) => {
-            commands::deps::execute(&package, tree, &output).await?;
-        }
-
         Some(Commands::Dependents { package }) => {
             commands::dependents::execute(&package, &output).await?;
         }

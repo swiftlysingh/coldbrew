@@ -124,16 +124,6 @@ pub enum Commands {
         package: String,
     },
 
-    /// Show dependencies for a package
-    Deps {
-        /// Package name
-        package: String,
-
-        /// Show as tree
-        #[arg(short, long)]
-        tree: bool,
-    },
-
     /// Show packages that depend on a package
     Dependents {
         /// Package name
