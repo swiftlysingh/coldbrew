@@ -48,7 +48,11 @@ pub async fn execute(package: &str, output: &Output) -> Result<()> {
         for v in &versions {
             let is_default = default.as_ref() == Some(v);
             if is_default {
-                println!("  {} {}", Output::version(v), console::style("(default)").green());
+                println!(
+                    "  {} {}",
+                    Output::version(v),
+                    console::style("(default)").green()
+                );
             } else {
                 println!("  {}", Output::version(v));
             }

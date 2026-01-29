@@ -72,7 +72,10 @@ async fn run() -> Result<()> {
             commands::upgrade::execute(&packages, yes, &output).await?;
         }
 
-        Some(Commands::List { names_only, versions }) => {
+        Some(Commands::List {
+            names_only,
+            versions,
+        }) => {
             commands::list::execute(names_only, versions.as_deref(), &output).await?;
         }
 

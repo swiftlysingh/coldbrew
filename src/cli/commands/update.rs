@@ -18,10 +18,7 @@ pub async fn execute(output: &Output) -> Result<()> {
     let count = index.update().await?;
 
     spinner.finish_and_clear();
-    output.success(&format!(
-        "Updated package index ({} formulas)",
-        count
-    ));
+    output.success(&format!("Updated package index ({} formulas)", count));
 
     Ok(())
 }

@@ -18,7 +18,11 @@ pub async fn execute(query: &str, extended: bool, output: &Output) -> Result<()>
         return Ok(());
     }
 
-    output.info(&format!("Found {} packages matching '{}'", results.len(), query));
+    output.info(&format!(
+        "Found {} packages matching '{}'",
+        results.len(),
+        query
+    ));
     println!();
 
     for formula in results.iter().take(if extended { 50 } else { 20 }) {

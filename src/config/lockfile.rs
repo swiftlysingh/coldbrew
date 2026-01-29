@@ -66,8 +66,8 @@ impl Lockfile {
         }
 
         // Calculate config hash
-        let config_content = toml::to_string(config)
-            .map_err(|e| ColdbrewError::Other(e.to_string()))?;
+        let config_content =
+            toml::to_string(config).map_err(|e| ColdbrewError::Other(e.to_string()))?;
         let config_hash = Self::hash_string(&config_content);
 
         Ok(Self {
@@ -135,8 +135,8 @@ impl Lockfile {
 
     /// Save the lockfile to disk
     pub fn save(&self, path: &Path) -> Result<()> {
-        let content = toml::to_string_pretty(self)
-            .map_err(|e| ColdbrewError::Other(e.to_string()))?;
+        let content =
+            toml::to_string_pretty(self).map_err(|e| ColdbrewError::Other(e.to_string()))?;
         fs::write(path, content)?;
         Ok(())
     }

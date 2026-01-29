@@ -73,12 +73,7 @@ pub struct RuntimeDependency {
 
 impl InstalledPackage {
     /// Create a new InstalledPackage
-    pub fn new(
-        name: String,
-        version: String,
-        tap: String,
-        cellar_path: PathBuf,
-    ) -> Self {
+    pub fn new(name: String, version: String, tap: String, cellar_path: PathBuf) -> Self {
         Self {
             name,
             version,

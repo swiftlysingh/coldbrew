@@ -68,11 +68,7 @@ pub async fn check_upgrades(paths: &Paths, filter: &[String]) -> Result<Vec<Upgr
 }
 
 /// Upgrade a single package
-pub async fn upgrade_package(
-    paths: &Paths,
-    upgrade: &UpgradeInfo,
-    output: &Output,
-) -> Result<()> {
+pub async fn upgrade_package(paths: &Paths, upgrade: &UpgradeInfo, output: &Output) -> Result<()> {
     // Install new version
     install::install(
         paths,
@@ -93,11 +89,7 @@ pub async fn upgrade_package(
 }
 
 /// Upgrade all packages
-pub async fn upgrade_all(
-    paths: &Paths,
-    _yes: bool,
-    output: &Output,
-) -> Result<Vec<UpgradeInfo>> {
+pub async fn upgrade_all(paths: &Paths, _yes: bool, output: &Output) -> Result<Vec<UpgradeInfo>> {
     let upgrades = check_upgrades(paths, &[]).await?;
 
     if upgrades.is_empty() {

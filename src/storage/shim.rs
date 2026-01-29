@@ -22,7 +22,12 @@ impl ShimManager {
     }
 
     /// Create shims for all binaries in a package
-    pub fn create_shims(&self, name: &str, version: &str, binaries: &[String]) -> Result<Vec<PathBuf>> {
+    pub fn create_shims(
+        &self,
+        name: &str,
+        version: &str,
+        binaries: &[String],
+    ) -> Result<Vec<PathBuf>> {
         let bin_dir = self.paths.bin_dir();
         fs::create_dir_all(&bin_dir)?;
 
@@ -38,7 +43,13 @@ impl ShimManager {
     }
 
     /// Create a single shim
-    fn create_shim(&self, shim_path: &PathBuf, package: &str, _version: &str, binary: &str) -> Result<()> {
+    fn create_shim(
+        &self,
+        shim_path: &PathBuf,
+        package: &str,
+        _version: &str,
+        binary: &str,
+    ) -> Result<()> {
         // The shim is a shell script that calls crew to resolve and exec the binary
         let shim_content = format!(
             r#"#!/bin/sh
@@ -189,7 +200,9 @@ mod tests {
         paths.init().unwrap();
 
         let manager = ShimManager::new(paths.clone());
-        let shims = manager.create_shims("jq", "1.7.1", &["jq".to_string()]).unwrap();
+        let shims = manager
+            .create_shims("jq", "1.7.1", &["jq".to_string()])
+            .unwrap();
 
         assert_eq!(shims.len(), 1);
         assert!(shims[0].exists());
@@ -206,7 +219,9 @@ mod tests {
         paths.init().unwrap();
 
         let manager = ShimManager::new(paths);
-        manager.create_shims("jq", "1.7.1", &["jq".to_string()]).unwrap();
+        manager
+            .create_shims("jq", "1.7.1", &["jq".to_string()])
+            .unwrap();
 
         let shims = manager.list_shims().unwrap();
         assert_eq!(shims.len(), 1);

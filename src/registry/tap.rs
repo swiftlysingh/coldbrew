@@ -63,7 +63,10 @@ impl TapManager {
         let tap_dir = self.paths.tap_dir(&user, &repo);
 
         if tap_dir.exists() {
-            return Err(ColdbrewError::TapAlreadyExists(format!("{}/{}", user, repo)));
+            return Err(ColdbrewError::TapAlreadyExists(format!(
+                "{}/{}",
+                user, repo
+            )));
         }
 
         // Create parent directory

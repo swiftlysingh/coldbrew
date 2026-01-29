@@ -22,7 +22,9 @@ pub async fn uninstall(
     if versions.is_empty() {
         return Err(ColdbrewError::PackageNotInstalled {
             name: name.to_string(),
-            version: version.map(String::from).unwrap_or_else(|| "any".to_string()),
+            version: version
+                .map(String::from)
+                .unwrap_or_else(|| "any".to_string()),
         });
     }
 

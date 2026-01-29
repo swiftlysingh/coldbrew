@@ -18,7 +18,10 @@ pub async fn execute(names_only: bool, versions: Option<&str>, output: &Output) 
             return Ok(());
         }
 
-        output.info(&format!("Installed versions of {}:", Output::package_name(package)));
+        output.info(&format!(
+            "Installed versions of {}:",
+            Output::package_name(package)
+        ));
         for version in versions {
             println!("  {}", Output::version(&version));
         }

@@ -157,8 +157,14 @@ impl fmt::Display for Version {
 
 impl Ord for Version {
     fn cmp(&self, other: &Self) -> Ordering {
-        let mut self_iter = self.components.iter().filter(|c| !matches!(c, VersionComponent::Separator));
-        let mut other_iter = other.components.iter().filter(|c| !matches!(c, VersionComponent::Separator));
+        let mut self_iter = self
+            .components
+            .iter()
+            .filter(|c| !matches!(c, VersionComponent::Separator));
+        let mut other_iter = other
+            .components
+            .iter()
+            .filter(|c| !matches!(c, VersionComponent::Separator));
 
         loop {
             match (self_iter.next(), other_iter.next()) {

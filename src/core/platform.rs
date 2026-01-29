@@ -41,12 +41,12 @@ impl fmt::Display for Arch {
 /// macOS version codenames
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MacOsVersion {
-    Sequoia,   // 15.x
-    Sonoma,    // 14.x
-    Ventura,   // 13.x
-    Monterey,  // 12.x
-    BigSur,    // 11.x
-    Catalina,  // 10.15
+    Sequoia,  // 15.x
+    Sonoma,   // 14.x
+    Ventura,  // 13.x
+    Monterey, // 12.x
+    BigSur,   // 11.x
+    Catalina, // 10.15
     Unknown(String),
 }
 
@@ -191,12 +191,10 @@ impl Platform {
                     Arch::X86_64 => version.to_string(),
                 }
             }
-            Os::Linux => {
-                match self.arch {
-                    Arch::Arm64 => "arm64_linux".to_string(),
-                    Arch::X86_64 => "x86_64_linux".to_string(),
-                }
-            }
+            Os::Linux => match self.arch {
+                Arch::Arm64 => "arm64_linux".to_string(),
+                Arch::X86_64 => "x86_64_linux".to_string(),
+            },
         }
     }
 
