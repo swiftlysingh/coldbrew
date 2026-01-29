@@ -194,6 +194,7 @@ fn check_cache(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
     }
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables, clippy::ptr_arg))]
 fn check_disk_space(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
     // Check available disk space on the coldbrew directory
     #[cfg(target_os = "macos")]
