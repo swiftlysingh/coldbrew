@@ -33,11 +33,11 @@ Verify the core user flows work end-to-end with real network data and a clean fi
 - `coldbrew upgrade`
 **Expected:** shows plan; if no upgrades, exits cleanly.
 
-### 5) Cache and Clean
-- `coldbrew cache info`
-- `coldbrew cache list`
+### 5) Space and Clean
+- `coldbrew space`
+- `coldbrew space --details`
 - `coldbrew clean --dry-run`
-**Expected:** cache stats show; clean shows candidate removals without changes.
+**Expected:** space shows disk usage; clean shows candidate removals without changes.
 
 ### 6) Uninstall
 - `coldbrew uninstall jq`
