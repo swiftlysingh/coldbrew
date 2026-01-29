@@ -1,11 +1,11 @@
 //! CLI command implementations
 
 pub mod cache;
+pub mod clean;
 pub mod default;
 pub mod dependents;
 pub mod deps;
 pub mod doctor;
-pub mod gc;
 pub mod info;
 pub mod init;
 pub mod install;
