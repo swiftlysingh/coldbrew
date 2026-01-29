@@ -150,17 +150,18 @@ pub enum Commands {
         remove: bool,
     },
 
-    /// Manage the download cache
-    Cache {
-        #[command(subcommand)]
-        action: CacheCommands,
+    /// Show disk usage and cleanup candidates
+    Space {
+        /// Show itemized details
+        #[arg(short, long)]
+        details: bool,
     },
 
-    /// Cleanup old versions and cache
+    /// Cleanup old versions, cache, and other unused data
     Clean {
-        /// Only clean the download cache
-        #[arg(long)]
-        cache: bool,
+        /// Clean everything without prompts
+        #[arg(short, long)]
+        all: bool,
 
         /// Dry run - show what would be removed
         #[arg(short, long)]
@@ -211,22 +212,6 @@ pub enum Commands {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
-}
-
-#[derive(Subcommand)]
-pub enum CacheCommands {
-    /// List cached downloads
-    List,
-
-    /// Remove cached downloads
-    Clean {
-        /// Remove all cached files
-        #[arg(short, long)]
-        all: bool,
-    },
-
-    /// Show cache location and size
-    Info,
 }
 
 impl Cli {

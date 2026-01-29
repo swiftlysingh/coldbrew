@@ -22,8 +22,8 @@ Commands:
   init         Initialize a new coldbrew.toml in the current directory
   lock         Generate a lockfile from coldbrew.toml
   tap          Add or remove taps (third-party repositories)
-  cache        Manage the download cache
-  clean        Cleanup old versions and cache
+  space        Show disk usage and cleanup candidates
+  clean        Cleanup old versions, cache, and other unused data
   link         Force-link a keg-only package
   unlink       Remove links for a package
   shell        Set up shell integration
@@ -277,59 +277,14 @@ Options:
   -V, --version  Print version
 ```
 
-## cache
+## space
 ```
-Manage the download cache
+Show disk usage and cleanup candidates
 
-Usage: crew cache [OPTIONS] <COMMAND>
-
-Commands:
-  list   List cached downloads
-  clean  Remove cached downloads
-  info   Show cache location and size
-  help   Print this message or the help of the given subcommand(s)
+Usage: crew space [OPTIONS]
 
 Options:
-  -v, --verbose  Enable verbose output
-  -q, --quiet    Suppress non-error output
-  -h, --help     Print help
-  -V, --version  Print version
-```
-
-### cache list
-```
-List cached downloads
-
-Usage: crew cache list [OPTIONS]
-
-Options:
-  -v, --verbose  Enable verbose output
-  -q, --quiet    Suppress non-error output
-  -h, --help     Print help
-  -V, --version  Print version
-```
-
-### cache clean
-```
-Remove cached downloads
-
-Usage: crew cache clean [OPTIONS]
-
-Options:
-  -a, --all      Remove all cached files
-  -v, --verbose  Enable verbose output
-  -q, --quiet    Suppress non-error output
-  -h, --help     Print help
-  -V, --version  Print version
-```
-
-### cache info
-```
-Show cache location and size
-
-Usage: crew cache info [OPTIONS]
-
-Options:
+  -d, --details  Show itemized details
   -v, --verbose  Enable verbose output
   -q, --quiet    Suppress non-error output
   -h, --help     Print help
@@ -338,12 +293,12 @@ Options:
 
 ## clean
 ```
-Cleanup old versions and cache
+Cleanup old versions, cache, and other unused data
 
 Usage: crew clean [OPTIONS]
 
 Options:
-      --cache    Only clean the download cache
+  -a, --all      Clean everything without prompts
   -v, --verbose  Enable verbose output
   -d, --dry-run  Dry run - show what would be removed
   -q, --quiet    Suppress non-error output
@@ -451,8 +406,8 @@ Commands:
   init         Initialize a new coldbrew.toml in the current directory
   lock         Generate a lockfile from coldbrew.toml
   tap          Add or remove taps (third-party repositories)
-  cache        Manage the download cache
-  clean        Cleanup old versions and cache
+  space        Show disk usage and cleanup candidates
+  clean        Cleanup old versions, cache, and other unused data
   link         Force-link a keg-only package
   unlink       Remove links for a package
   shell        Set up shell integration

@@ -4,7 +4,7 @@ use clap::CommandFactory;
 use clap_complete::generate;
 use coldbrew::cli::commands;
 use coldbrew::cli::output::Output;
-use coldbrew::cli::{CacheCommands, Cli, Commands};
+use coldbrew::cli::{Cli, Commands};
 use coldbrew::error::Result;
 use coldbrew::storage::Paths;
 use std::io;
@@ -111,20 +111,12 @@ async fn run() -> Result<()> {
             commands::tap::execute(tap.as_deref(), remove, &output).await?;
         }
 
-        Some(Commands::Cache { action }) => match action {
-            CacheCommands::List => {
-                commands::cache::execute_list(&output).await?;
-            }
-            CacheCommands::Clean { all } => {
-                commands::cache::execute_clean(all, &output).await?;
-            }
-            CacheCommands::Info => {
-                commands::cache::execute_info(&output).await?;
-            }
-        },
+        Some(Commands::Space { details }) => {
+            commands::space::execute(details, &output).await?;
+        }
 
-        Some(Commands::Clean { cache, dry_run }) => {
-            commands::clean::execute(dry_run, cache, &output).await?;
+        Some(Commands::Clean { all, dry_run }) => {
+            commands::clean::execute(dry_run, all, &output).await?;
         }
 
         Some(Commands::Link { package, force }) => {

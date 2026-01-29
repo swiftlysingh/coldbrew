@@ -86,8 +86,8 @@ crew install # Install from lockfile
 | `init` | Create coldbrew.toml |
 | `lock` | Generate lockfile |
 | `tap <user/repo>` | Add third-party repository |
-| `cache clean` | Clean download cache |
-| `clean [--cache] [--dry-run]` | Cleanup packages and/or cache |
+| `space` | Show disk usage and cleanup candidates |
+| `clean [--all] [--dry-run]` | Interactive cleanup |
 | `doctor` | Check for problems |
 | `shell` | Shell integration setup |
 
