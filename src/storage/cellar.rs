@@ -3,7 +3,6 @@
 use crate::core::package::{InstalledPackage, PackageMetadata};
 use crate::error::{ColdbrewError, Result};
 use crate::storage::paths::Paths;
-use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 

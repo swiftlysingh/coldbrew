@@ -137,7 +137,7 @@ impl TapManager {
             }
         }
 
-        taps.sort_by(|a, b| a.full_name().cmp(&b.full_name()));
+        taps.sort_by_key(|tap| tap.full_name());
         Ok(taps)
     }
 

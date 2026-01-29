@@ -48,6 +48,7 @@ impl Index {
     }
 
     /// Load the index from disk
+    #[allow(dead_code)]
     fn load(&mut self) -> Result<()> {
         if self.formulas.is_some() {
             return Ok(());

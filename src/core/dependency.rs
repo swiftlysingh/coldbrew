@@ -2,7 +2,7 @@
 
 use crate::core::Formula;
 use crate::error::{ColdbrewError, Result};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet};
 
 /// Dependency resolver for package installation
 pub struct DependencyResolver {
@@ -52,8 +52,6 @@ impl DependencyResolver {
 
         self.resolve_recursive(package_name, 0, true, &mut resolved, &mut visited, &mut in_progress)?;
 
-        // Reverse to get installation order (dependencies first)
-        resolved.reverse();
         Ok(resolved)
     }
 

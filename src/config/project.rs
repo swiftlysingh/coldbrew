@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 
 /// Project-level configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProjectConfig {
     /// Project name (optional)
     pub name: Option<String>,
@@ -72,16 +72,6 @@ impl PackageSpec {
     }
 }
 
-impl Default for ProjectConfig {
-    fn default() -> Self {
-        Self {
-            name: None,
-            packages: HashMap::new(),
-            dev_packages: HashMap::new(),
-        }
-    }
-}
-
 impl ProjectConfig {
     /// Load a project configuration from a file
     pub fn load(path: &Path) -> Result<Self> {
@@ -140,8 +130,10 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let config_path = temp.path().join("coldbrew.toml");
 
-        let mut config = ProjectConfig::default();
-        config.name = Some("test-project".to_string());
+        let mut config = ProjectConfig {
+            name: Some("test-project".to_string()),
+            ..Default::default()
+        };
         config.add_package("jq", "1.7", false);
         config.add_package("node", "22", true);
 

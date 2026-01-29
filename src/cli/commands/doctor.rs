@@ -15,7 +15,7 @@ pub async fn execute(output: &Output) -> Result<()> {
     output.info("Running diagnostics...\n");
 
     // Platform check
-    check_platform(output)?;
+    check_platform()?;
 
     // PATH check
     check_path(&paths, output, &mut warnings);
@@ -58,7 +58,7 @@ pub async fn execute(output: &Output) -> Result<()> {
     Ok(())
 }
 
-fn check_platform(output: &Output) -> Result<()> {
+fn check_platform() -> Result<()> {
     let platform = Platform::detect()?;
     println!(
         "  {} Platform: {}",
@@ -82,9 +82,10 @@ fn check_path(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
             console::style("✓").green()
         );
     } else {
-        warnings.push(format!(
+        warnings.push(
             "Coldbrew bin directory not in PATH. Run 'crew shell' for setup instructions"
-        ));
+                .to_string(),
+        );
         println!(
             "  {} PATH: {} not in PATH",
             console::style("!").yellow(),
@@ -206,7 +207,7 @@ fn check_disk_space(paths: &Paths, _output: &Output, warnings: &mut Vec<String>)
     #[cfg(target_os = "macos")]
     {
         if let Ok(statvfs) = nix::sys::statvfs::statvfs(paths.root()) {
-            let available = statvfs.blocks_available() as u64 * statvfs.block_size() as u64;
+            let available = u64::from(statvfs.blocks_available()) * statvfs.block_size();
 
             if available < 1024 * 1024 * 1024 {
                 // Less than 1GB

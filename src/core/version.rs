@@ -16,7 +16,7 @@ pub struct Version {
 }
 
 /// A single component of a version
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 enum VersionComponent {
     Numeric(u64),
     Alpha(String),
@@ -218,7 +218,8 @@ pub fn version_matches(version: &Version, constraint: &str) -> bool {
     }
 
     // Handle major.minor match (e.g., "22.1" matches "22.1.5")
-    if constraint.contains('.') && !constraint.contains('.', |c| c == '.') {
+    let dot_count = constraint.chars().filter(|c| *c == '.').count();
+    if dot_count == 1 {
         let parts: Vec<&str> = constraint.split('.').collect();
         if parts.len() == 2 {
             if let (Ok(major), Ok(minor)) = (parts[0].parse::<u64>(), parts[1].parse::<u64>()) {

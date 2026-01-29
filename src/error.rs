@@ -106,6 +106,12 @@ pub enum ColdbrewError {
     #[error("Git error: {0}")]
     Git(#[from] git2::Error),
 
+    #[error("Dialoguer error: {0}")]
+    Dialoguer(#[from] dialoguer::Error),
+
+    #[error("Walkdir error: {0}")]
+    Walkdir(#[from] walkdir::Error),
+
     #[error("{0}")]
     Other(String),
 }

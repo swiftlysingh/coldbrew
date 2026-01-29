@@ -3,7 +3,6 @@
 use crate::cli::output::{format_bytes, Output};
 use crate::error::Result;
 use crate::storage::{Cache, Cellar, Paths};
-use std::collections::HashSet;
 use std::time::Duration;
 
 /// Execute the gc command
@@ -99,16 +98,14 @@ pub async fn execute(dry_run: bool, output: &Output) -> Result<()> {
                 format_bytes(total_size)
             ));
         }
+    } else if items_removed == 0 {
+        output.success("Nothing to clean up");
     } else {
-        if items_removed == 0 {
-            output.success("Nothing to clean up");
-        } else {
-            output.success(&format!(
-                "Removed {} items, freed {}",
-                items_removed,
-                format_bytes(total_freed)
-            ));
-        }
+        output.success(&format!(
+            "Removed {} items, freed {}",
+            items_removed,
+            format_bytes(total_freed)
+        ));
     }
 
     Ok(())

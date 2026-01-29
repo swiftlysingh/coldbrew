@@ -1,7 +1,6 @@
 //! Lockfile (coldbrew.lock)
 
 use crate::config::ProjectConfig;
-use crate::core::version::parse_package_spec;
 use crate::error::{ColdbrewError, Result};
 use crate::registry::Index;
 use chrono::{DateTime, Utc};
@@ -81,7 +80,7 @@ impl Lockfile {
 
     fn resolve_package(
         name: &str,
-        version_constraint: &str,
+        _version_constraint: &str,
         index: &Index,
         dev: bool,
     ) -> Result<LockedPackage> {

@@ -27,7 +27,7 @@ pub async fn uninstall(
     }
 
     let versions_to_remove: Vec<String> = if all {
-        versions
+        versions.clone()
     } else if let Some(v) = version {
         if !versions.contains(&v.to_string()) {
             return Err(ColdbrewError::PackageNotInstalled {

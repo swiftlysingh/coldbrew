@@ -73,7 +73,7 @@ impl Default for CellarType {
 
 impl BottleFile {
     /// Get the GHCR-compatible URL for downloading this bottle
-    pub fn ghcr_url(&self, name: &str, version: &str, tag: &str) -> String {
+    pub fn ghcr_url(&self, name: &str, _version: &str, _tag: &str) -> String {
         // The URL in the JSON is already the direct GHCR blob URL
         // But we need to construct it properly for the token auth flow
         format!(
@@ -87,10 +87,10 @@ impl BottleFile {
 
 impl BottleFiles {
     /// Get the best bottle file for the given platform tags
-    pub fn best_for_platform(&self, tags: &[String]) -> Option<(&str, &BottleFile)> {
+    pub fn best_for_platform(&self, tags: &[String]) -> Option<(String, &BottleFile)> {
         for tag in tags {
             if let Some(file) = self.files.get(tag) {
-                return Some((tag.as_str(), file));
+                return Some((tag.clone(), file));
             }
         }
         None
@@ -142,6 +142,6 @@ mod tests {
 
         let result = bottle_files.best_for_platform(&tags);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().0, "arm64_sonoma");
+        assert_eq!(result.unwrap().0, "arm64_sonoma".to_string());
     }
 }
