@@ -59,6 +59,14 @@ pub async fn execute(package: &str, format: &str, output: &Output) -> Result<()>
         );
     }
 
+    if !formula.build_dependencies.is_empty() {
+        println!(
+            "{}: {}",
+            console::style("Build dependencies").bold(),
+            formula.build_dependencies.join(", ")
+        );
+    }
+
     // Bottle availability
     let tags = formula.available_bottle_tags();
     if !tags.is_empty() {
