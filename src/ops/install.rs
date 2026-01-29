@@ -2,6 +2,7 @@
 
 use crate::cli::output::Output;
 use crate::core::package::{InstalledPackage, PackageMetadata, RuntimeDependency};
+use crate::core::version::{version_matches, Version};
 use crate::core::{DependencyResolver, Formula, Platform};
 use crate::error::{ColdbrewError, Result};
 use crate::ops::verify;
@@ -101,15 +102,20 @@ pub async fn install(
         }
 
         let target_version = if is_root {
-            version.unwrap_or(&formula.versions.stable)
+            match version {
+                Some(requested) => {
+                    resolve_requested_version(&pkg_name, requested, &formula.versions.stable)?
+                }
+                None => formula.versions.stable.clone(),
+            }
         } else {
-            &formula.versions.stable
+            formula.versions.stable.clone()
         };
 
-        if is_root && cellar.is_installed(&pkg_name, target_version) && !force {
+        if is_root && cellar.is_installed(&pkg_name, &target_version) && !force {
             return Err(ColdbrewError::PackageAlreadyInstalled {
                 name: pkg_name.clone(),
-                version: target_version.to_string(),
+                version: target_version.clone(),
             });
         }
 
@@ -127,7 +133,7 @@ pub async fn install(
         let installed = install_single(
             &ctx,
             &pkg_name,
-            target_version,
+            &target_version,
             formula,
             runtime_deps,
             options,
@@ -199,6 +205,33 @@ fn resolve_runtime_deps(
     }
 
     Ok(runtime_deps)
+}
+
+fn resolve_requested_version(name: &str, requested: &str, stable: &str) -> Result<String> {
+    match Version::parse(stable) {
+        Ok(stable_version) => {
+            if version_matches(&stable_version, requested) {
+                Ok(stable.to_string())
+            } else {
+                Err(ColdbrewError::VersionNotAvailable {
+                    name: name.to_string(),
+                    requested: requested.to_string(),
+                    available: stable.to_string(),
+                })
+            }
+        }
+        Err(_) => {
+            if stable == requested {
+                Ok(stable.to_string())
+            } else {
+                Err(ColdbrewError::VersionNotAvailable {
+                    name: name.to_string(),
+                    requested: requested.to_string(),
+                    available: stable.to_string(),
+                })
+            }
+        }
+    }
 }
 
 async fn install_single(

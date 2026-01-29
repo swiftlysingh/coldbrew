@@ -1,9 +1,10 @@
 //! Install command - install packages
 
+use crate::cli::commands::spec::resolve_install_spec;
 use crate::cli::output::Output;
-use crate::core::version::parse_package_spec;
 use crate::error::{ColdbrewError, Result};
 use crate::ops;
+use crate::registry::Index;
 use crate::storage::{Cellar, Paths};
 use std::env;
 use std::path::{Path, PathBuf};
@@ -17,9 +18,10 @@ pub async fn execute(
 ) -> Result<()> {
     let paths = Paths::new()?;
     paths.init()?;
+    let index = Index::new(paths.clone());
 
     for package in packages {
-        let (name, version) = parse_package_spec(package);
+        let (name, version) = resolve_install_spec(package, &index)?;
 
         output.info(&format!(
             "Installing {}{}",
