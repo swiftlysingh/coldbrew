@@ -90,18 +90,6 @@ crew install # Install from lockfile
 | `clean [--all] [--dry-run]` | Interactive cleanup |
 | `doctor` | Check for problems |
 
-## Shell Integration
-
-Add Coldbrew to your PATH:
-
-```bash
-# bash/zsh
-export PATH="$HOME/.coldbrew/bin:$PATH"
-
-# fish
-fish_add_path ~/.coldbrew/bin
-```
-
 ## License
 
 MIT
