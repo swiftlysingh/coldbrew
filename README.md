@@ -88,7 +88,7 @@ crew install # Install from lockfile
 | `lock` | Generate lockfile |
 | `tap <user/repo>` | Add third-party repository |
 | `cache clean` | Clean download cache |
-| `gc` | Garbage collection |
+| `clean [--cache] [--dry-run]` | Cleanup packages and/or cache |
 | `doctor` | Check for problems |
 | `shell` | Shell integration setup |
 

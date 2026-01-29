@@ -166,8 +166,12 @@ pub enum Commands {
         action: CacheCommands,
     },
 
-    /// Garbage collection - remove old versions and orphan dependencies
-    Gc {
+    /// Cleanup old versions and cache
+    Clean {
+        /// Only clean the download cache
+        #[arg(long)]
+        cache: bool,
+
         /// Dry run - show what would be removed
         #[arg(short, long)]
         dry_run: bool,
