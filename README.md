@@ -83,7 +83,6 @@ crew install # Install from lockfile
 | `which <binary>` | Show which package provides a binary |
 | `pin <package>` | Pin a package version |
 | `default <package@version>` | Set default version |
-| `deps <package>` | Show dependencies |
 | `init` | Create coldbrew.toml |
 | `lock` | Generate lockfile |
 | `tap <user/repo>` | Add third-party repository |

@@ -27,7 +27,6 @@ Verify the core user flows work end-to-end with real network data and a clean fi
 
 ### 3) Dependencies
 - `coldbrew install ffmpeg` (or another dep-heavy formula)
-- `coldbrew deps ffmpeg`
 **Expected:** dependencies are installed and listed.
 
 ### 4) Upgrade (Interactive)

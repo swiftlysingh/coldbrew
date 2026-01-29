@@ -73,4 +73,4 @@ All errors use `ColdbrewError` from `src/error.rs`. Each variant should implemen
 ## GitHub Issues
 
 - **#1-#8**: MVP phases (completed)
-- **#9-#18**: Post-MVP roadmap (migration, source builds, casks, parallel install)
+- **#9-#18**: Post-MVP roadmap (source builds, casks, parallel install)
