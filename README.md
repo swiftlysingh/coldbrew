@@ -89,7 +89,6 @@ crew install # Install from lockfile
 | `space` | Show disk usage and cleanup candidates |
 | `clean [--all] [--dry-run]` | Interactive cleanup |
 | `doctor` | Check for problems |
-| `shell` | Shell integration setup |
 
 ## Shell Integration
 

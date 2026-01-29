@@ -26,7 +26,6 @@ Commands:
   clean        Cleanup old versions, cache, and other unused data
   link         Force-link a keg-only package
   unlink       Remove links for a package
-  shell        Set up shell integration
   doctor       Check system for potential problems
   completions  Generate shell completions
   help         Print this message or the help of the given subcommand(s)
@@ -339,22 +338,6 @@ Options:
   -V, --version  Print version
 ```
 
-## shell
-```
-Set up shell integration
-
-Usage: crew shell [OPTIONS] [SHELL]
-
-Arguments:
-  [SHELL]  Shell to configure (bash, zsh, fish)
-
-Options:
-  -v, --verbose  Enable verbose output
-  -q, --quiet    Suppress non-error output
-  -h, --help     Print help
-  -V, --version  Print version
-```
-
 ## doctor
 ```
 Check system for potential problems
@@ -410,7 +393,6 @@ Commands:
   clean        Cleanup old versions, cache, and other unused data
   link         Force-link a keg-only package
   unlink       Remove links for a package
-  shell        Set up shell integration
   doctor       Check system for potential problems
   completions  Generate shell completions
   help         Print this message or the help of the given subcommand(s)
