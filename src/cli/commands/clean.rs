@@ -1,115 +1,149 @@
-//! Clean command - cleanup packages and cache
+//! Clean command - interactive cleanup
 
 use crate::cli::output::{format_bytes, Output};
 use crate::error::Result;
-use crate::storage::{Cache, Cellar, Paths};
-use std::time::Duration;
+use crate::ops::cleanup::{self, CleanupCategory, CleanupKind};
+use crate::storage::Paths;
+use dialoguer::Input;
+use std::collections::HashSet;
 
 /// Execute the clean command
-pub async fn execute(dry_run: bool, cache_only: bool, output: &Output) -> Result<()> {
+pub async fn execute(dry_run: bool, all: bool, output: &Output) -> Result<()> {
     let paths = Paths::new()?;
-    let cellar = Cellar::new(paths.clone());
-    let cache = Cache::new(paths);
+    let categories = cleanup::collect_categories(&paths)?;
 
-    let mut total_freed = 0u64;
-    let mut items_removed = 0usize;
-
-    let mut to_remove = Vec::new();
-
-    if !cache_only {
-        // Find old versions (keep only latest 2 per package)
-        output.info("Checking for old package versions...");
-
-        let packages = cellar.list_packages()?;
-        let mut by_name: std::collections::HashMap<String, Vec<_>> =
-            std::collections::HashMap::new();
-
-        for pkg in packages {
-            by_name
-                .entry(pkg.name.clone())
-                .or_default()
-                .push((pkg.version.clone(), pkg.cellar_path.clone()));
-        }
-
-        for (name, mut versions) in by_name {
-            // Sort by version (newest last)
-            versions.sort_by(|a, b| a.0.cmp(&b.0));
-
-            // Keep last 2 versions
-            if versions.len() > 2 {
-                let old_versions = &versions[..versions.len() - 2];
-                for (version, path) in old_versions {
-                    // Calculate size
-                    let size = walkdir::WalkDir::new(path)
-                        .into_iter()
-                        .filter_map(|e| e.ok())
-                        .filter(|e| e.file_type().is_file())
-                        .filter_map(|e| e.metadata().ok())
-                        .map(|m| m.len())
-                        .sum::<u64>();
-
-                    to_remove.push((name.clone(), version.clone(), path.clone(), size));
-                }
-            }
-        }
-
-        if !to_remove.is_empty() {
-            output.section("Old versions to remove");
-            for (name, version, path, size) in &to_remove {
-                println!(
-                    "  {} {} - {}",
-                    Output::package_name(name),
-                    Output::version(version),
-                    format_bytes(*size)
-                );
-
-                if !dry_run {
-                    std::fs::remove_dir_all(path)?;
-                    total_freed += size;
-                    items_removed += 1;
-                }
-            }
-        }
+    let has_items = categories.iter().any(|category| !category.is_empty());
+    if !has_items {
+        output.success("Nothing to clean up");
+        return Ok(());
     }
 
-    // Clean old cache files (older than 30 days)
-    output.info("Checking cache...");
+    output.section("Cleanup candidates");
+    print_summary(&categories);
 
-    if !dry_run {
-        let cache_result = cache.clean(Some(Duration::from_secs(30 * 24 * 60 * 60)))?;
-        total_freed += cache_result.freed;
-        items_removed += cache_result.removed;
-
-        if cache_result.removed > 0 {
-            output.info(&format!(
-                "Cleaned {} cached files ({})",
-                cache_result.removed,
-                cache_result.freed_human()
-            ));
+    let selected = if all {
+        categories
+            .iter()
+            .filter(|category| !category.is_empty())
+            .map(|category| category.kind)
+            .collect::<HashSet<_>>()
+    } else {
+        match prompt_mode()? {
+            CleanupMode::Quit => {
+                output.info("Cleanup cancelled");
+                return Ok(());
+            }
+            CleanupMode::All => categories
+                .iter()
+                .filter(|category| !category.is_empty())
+                .map(|category| category.kind)
+                .collect(),
+            CleanupMode::Select => prompt_categories(&categories, output)?,
         }
+    };
+
+    if selected.is_empty() {
+        output.info("No cleanup targets selected");
+        return Ok(());
     }
 
-    // Summary
+    let result = cleanup::apply_cleanup(&paths, &categories, &selected, dry_run)?;
+
     println!();
     if dry_run {
         output.info("Dry run - no changes made");
-        if !to_remove.is_empty() {
-            let total_size: u64 = to_remove.iter().map(|(_, _, _, s)| s).sum();
-            output.info(&format!(
-                "Would remove {} items, freeing {}",
-                to_remove.len(),
-                format_bytes(total_size)
-            ));
-        }
-    } else if items_removed == 0 {
+        output.info(&format!(
+            "Would remove {} items, freeing {}",
+            result.removed,
+            format_bytes(result.freed)
+        ));
+    } else if result.removed == 0 {
         output.success("Nothing to clean up");
     } else {
         output.success(&format!(
             "Removed {} items, freed {}",
-            items_removed,
-            format_bytes(total_freed)
+            result.removed,
+            format_bytes(result.freed)
         ));
     }
 
     Ok(())
+}
+
+fn print_summary(categories: &[CleanupCategory]) {
+    for category in categories {
+        let count = category.items.len();
+        let size = format_bytes(category.total_size());
+        println!("  {:<22} {:>3} items ({})", category.title, count, size);
+    }
+}
+
+fn prompt_mode() -> Result<CleanupMode> {
+    loop {
+        let input: String = Input::new()
+            .with_prompt("Clean all? [a]ll / [s]elect / [q]uit")
+            .default("s".to_string())
+            .interact_text()?;
+
+        match input.trim().to_lowercase().as_str() {
+            "a" | "all" => return Ok(CleanupMode::All),
+            "s" | "select" => return Ok(CleanupMode::Select),
+            "q" | "quit" => return Ok(CleanupMode::Quit),
+            _ => println!("  Please enter a, s, or q"),
+        }
+    }
+}
+
+fn prompt_categories(
+    categories: &[CleanupCategory],
+    output: &Output,
+) -> Result<HashSet<CleanupKind>> {
+    let mut selected = HashSet::new();
+
+    for category in categories {
+        if category.is_empty() {
+            continue;
+        }
+
+        loop {
+            let prompt = format!("Remove {}? [y/N/d]", category.title.to_lowercase());
+            let input: String = Input::new()
+                .with_prompt(prompt)
+                .default("n".to_string())
+                .interact_text()?;
+
+            match input.trim().to_lowercase().as_str() {
+                "y" | "yes" => {
+                    selected.insert(category.kind);
+                    break;
+                }
+                "n" | "no" => break,
+                "d" | "details" => {
+                    output.section(&format!("Details: {}", category.title));
+                    print_details(category);
+                }
+                _ => println!("  Please enter y, n, or d"),
+            }
+        }
+    }
+
+    Ok(selected)
+}
+
+fn print_details(category: &CleanupCategory) {
+    for item in &category.items {
+        println!(
+            "  {} - {} ({})",
+            item.label,
+            format_bytes(item.size),
+            item.path.display()
+        );
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum CleanupMode {
+    All,
+    Select,
+    Quit,
 }

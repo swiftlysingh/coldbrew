@@ -172,7 +172,7 @@ fn check_cache(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
             // Warn if cache is over 1GB
             if size > 1024 * 1024 * 1024 {
                 warnings.push(format!(
-                    "Cache is large ({}). Consider running 'crew cache clean'",
+                    "Cache is large ({}). Consider running 'crew clean'",
                     format_bytes(size)
                 ));
                 println!(
