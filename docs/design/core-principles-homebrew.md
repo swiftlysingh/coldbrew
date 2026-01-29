@@ -63,8 +63,8 @@ engineering guidelines for building and evolving the Coldbrew CLI.
 **Problem:** Auto-cleanups can delete needed versions or caches.  
 **Coldbrew behavior:**
 - `crew clean` is interactive by default.
-- `crew clean --yes` for non-interactive environments.
-- Cache cleanup is separate: `crew cache clean`.
+- `crew clean --all` for non-interactive environments.
+- `crew space` shows disk usage and cleanup candidates.
 - No auto-removal in the background.
 
 ### Performance
