@@ -104,6 +104,22 @@ export PATH="$HOME/.coldbrew/bin:$PATH"
 fish_add_path ~/.coldbrew/bin
 ```
 
+## Development
+
+Enable the repository hooks (run once per clone):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The pre-commit hook runs `cargo fmt` and re-stages Rust files that were
+already staged so formatting issues are fixed before you commit. If
+`cargo fmt` is missing, install rustfmt with:
+
+```bash
+rustup component add rustfmt
+```
+
 ## License
 
 MIT
