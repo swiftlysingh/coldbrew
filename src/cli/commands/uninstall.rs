@@ -1,10 +1,10 @@
 //! Uninstall command - remove packages
 
+use crate::cli::commands::spec::resolve_installed_spec;
 use crate::cli::output::Output;
-use crate::core::version::parse_package_spec;
 use crate::error::Result;
 use crate::ops;
-use crate::storage::Paths;
+use crate::storage::{Cellar, Paths};
 
 /// Execute the uninstall command
 pub async fn execute(
@@ -14,9 +14,10 @@ pub async fn execute(
     output: &Output,
 ) -> Result<()> {
     let paths = Paths::new()?;
+    let cellar = Cellar::new(paths.clone());
 
     for package in packages {
-        let (name, version) = parse_package_spec(package);
+        let (name, version) = resolve_installed_spec(package, &cellar)?;
 
         output.info(&format!("Uninstalling {}", Output::package_name(&name)));
 

@@ -25,6 +25,13 @@ pub enum ColdbrewError {
     #[error("Package '{name}' is already installed at version '{version}'")]
     PackageAlreadyInstalled { name: String, version: String },
 
+    #[error("Requested version '{requested}' for '{name}' is not available (current: {available})")]
+    VersionNotAvailable {
+        name: String,
+        requested: String,
+        available: String,
+    },
+
     #[error("Dependency '{dep}' required by '{package}' could not be resolved")]
     DependencyResolutionFailed { package: String, dep: String },
 
@@ -88,6 +95,9 @@ pub enum ColdbrewError {
     #[error("GHCR authentication failed: {0}")]
     GhcrAuthFailed(String),
 
+    #[error("Homebrew (brew) was not found")]
+    HomebrewNotFound,
+
     #[error("Download failed: {0}")]
     DownloadFailed(String),
 
@@ -141,6 +151,12 @@ impl ColdbrewError {
             ColdbrewError::PackagePinned(_) => Some("Use 'crew unpin <package>' to allow upgrades"),
             ColdbrewError::ChecksumMismatch { .. } => {
                 Some("Try running 'crew clean' and retry the installation")
+            }
+            ColdbrewError::VersionNotAvailable { .. } => {
+                Some("Run 'crew info <package>' to see the current available version")
+            }
+            ColdbrewError::HomebrewNotFound => {
+                Some("Install Homebrew or pass --brew <path> to 'crew migrate'")
             }
             _ => None,
         }

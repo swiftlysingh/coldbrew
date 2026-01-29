@@ -1,8 +1,8 @@
 //! Default command - set or show default package version
 
+use crate::cli::commands::spec::resolve_installed_spec;
 use crate::cli::output::Output;
 use crate::config::GlobalConfig;
-use crate::core::version::parse_package_spec;
 use crate::error::{ColdbrewError, Result};
 use crate::storage::{Cellar, Paths};
 
@@ -10,7 +10,7 @@ use crate::storage::{Cellar, Paths};
 pub async fn execute(package: &str, output: &Output) -> Result<()> {
     let paths = Paths::new()?;
     let cellar = Cellar::new(paths.clone());
-    let (name, version) = parse_package_spec(package);
+    let (name, version) = resolve_installed_spec(package, &cellar)?;
 
     // Get installed versions
     let versions = cellar.get_versions(&name)?;
