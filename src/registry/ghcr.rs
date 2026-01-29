@@ -59,15 +59,24 @@ impl GhcrClient {
 
         // Fetch new token
         let scope = format!("repository:homebrew/core/{}:pull", package);
-        let url = format!("{}?scope={}", GHCR_TOKEN_URL, scope);
 
-        let response = self.client.get(&url).send().await?;
+        let response = self
+            .client
+            .get(GHCR_TOKEN_URL)
+            .query(&[("service", "ghcr.io"), ("scope", &scope)])
+            .send()
+            .await?;
 
         if !response.status().is_success() {
-            return Err(ColdbrewError::GhcrAuthFailed(format!(
-                "Token request failed: {}",
-                response.status()
-            )));
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            let detail = body.trim();
+            let message = if detail.is_empty() {
+                format!("Token request failed: {}", status)
+            } else {
+                format!("Token request failed: {} {}", status, detail)
+            };
+            return Err(ColdbrewError::GhcrAuthFailed(message));
         }
 
         let token_response: TokenResponse = response.json().await?;
