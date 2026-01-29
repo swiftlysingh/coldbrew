@@ -85,6 +85,17 @@ pub enum Commands {
         force: bool,
     },
 
+    /// Migrate Homebrew-installed formulas to Coldbrew
+    Migrate {
+        /// Path to Homebrew brew binary
+        #[arg(long)]
+        brew: Option<String>,
+
+        /// Dry run - show what would be migrated
+        #[arg(long)]
+        dry_run: bool,
+    },
+
     /// Uninstall packages
     Uninstall {
         /// Packages to uninstall

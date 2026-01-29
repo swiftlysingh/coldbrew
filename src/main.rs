@@ -60,6 +60,10 @@ async fn run() -> Result<()> {
             commands::install::execute(&packages, skip_deps, force, &output).await?;
         }
 
+        Some(Commands::Migrate { brew, dry_run }) => {
+            commands::migrate::execute(brew.as_deref(), dry_run, &output).await?;
+        }
+
         Some(Commands::Uninstall {
             packages,
             all,
