@@ -95,7 +95,7 @@ pub async fn upgrade_package(
 /// Upgrade all packages
 pub async fn upgrade_all(
     paths: &Paths,
-    yes: bool,
+    _yes: bool,
     output: &Output,
 ) -> Result<Vec<UpgradeInfo>> {
     let upgrades = check_upgrades(paths, &[]).await?;

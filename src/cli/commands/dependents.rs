@@ -13,7 +13,7 @@ pub async fn execute(package: &str, output: &Output) -> Result<()> {
     let cellar = Cellar::new(paths);
 
     // Verify package exists
-    let formula = index
+    let _formula = index
         .get_formula(package)?
         .ok_or_else(|| ColdbrewError::PackageNotFound(package.to_string()))?;
 

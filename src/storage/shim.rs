@@ -38,7 +38,7 @@ impl ShimManager {
     }
 
     /// Create a single shim
-    fn create_shim(&self, shim_path: &PathBuf, package: &str, version: &str, binary: &str) -> Result<()> {
+    fn create_shim(&self, shim_path: &PathBuf, package: &str, _version: &str, binary: &str) -> Result<()> {
         // The shim is a shell script that calls crew to resolve and exec the binary
         let shim_content = format!(
             r#"#!/bin/sh

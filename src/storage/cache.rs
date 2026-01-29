@@ -1,6 +1,6 @@
 //! Download cache management
 
-use crate::error::{ColdbrewError, Result};
+use crate::error::Result;
 use crate::storage::paths::Paths;
 use std::fs;
 use std::path::{Path, PathBuf};

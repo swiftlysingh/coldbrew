@@ -97,50 +97,51 @@ impl GhcrClient {
     where
         F: Fn(u64, u64),
     {
-        let token = self.get_token(&formula.name).await?;
+        let mut refreshed = false;
 
-        // The bottle URL from the formula JSON
-        let response = self
-            .client
-            .get(&bottle_file.url)
-            .header("Authorization", format!("Bearer {}", token))
-            .send()
-            .await?;
+        loop {
+            let token = self.get_token(&formula.name).await?;
 
-        if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-            // Token might have expired, clear cache and retry
-            {
-                let mut cache = self.token_cache.write().await;
-                *cache = None;
+            let response = self
+                .client
+                .get(&bottle_file.url)
+                .header("Authorization", format!("Bearer {}", token))
+                .send()
+                .await?;
+
+            if response.status() == reqwest::StatusCode::UNAUTHORIZED && !refreshed {
+                {
+                    let mut cache = self.token_cache.write().await;
+                    *cache = None;
+                }
+                refreshed = true;
+                continue;
             }
-            return self
-                .download_bottle(formula, bottle_file, dest, progress_callback)
-                .await;
+
+            if !response.status().is_success() {
+                return Err(ColdbrewError::DownloadFailed(format!(
+                    "Bottle download failed: {}",
+                    response.status()
+                )));
+            }
+
+            let total_size = response.content_length().unwrap_or(0);
+            let mut downloaded: u64 = 0;
+
+            let mut file = std::fs::File::create(dest)?;
+            let mut stream = response.bytes_stream();
+
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk?;
+                file.write_all(&chunk)?;
+                downloaded += chunk.len() as u64;
+                progress_callback(downloaded, total_size);
+            }
+
+            file.flush()?;
+
+            return Ok(());
         }
-
-        if !response.status().is_success() {
-            return Err(ColdbrewError::DownloadFailed(format!(
-                "Bottle download failed: {}",
-                response.status()
-            )));
-        }
-
-        let total_size = response.content_length().unwrap_or(0);
-        let mut downloaded: u64 = 0;
-
-        let mut file = std::fs::File::create(dest)?;
-        let mut stream = response.bytes_stream();
-
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk?;
-            file.write_all(&chunk)?;
-            downloaded += chunk.len() as u64;
-            progress_callback(downloaded, total_size);
-        }
-
-        file.flush()?;
-
-        Ok(())
     }
 
     /// Download a bottle and return the bytes

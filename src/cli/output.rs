@@ -1,8 +1,7 @@
 //! Terminal output formatting
 
-use console::{style, Style, Term};
+use console::{style, Term};
 use indicatif::{ProgressBar, ProgressStyle};
-use std::io::Write;
 
 /// Output formatter for CLI
 pub struct Output {
@@ -24,31 +23,41 @@ impl Output {
     /// Print an info message
     pub fn info(&self, message: &str) {
         if !self.quiet {
-            let _ = writeln!(self.term, "{} {}", style("==>").cyan().bold(), message);
+            let _ = self
+                .term
+                .write_line(&format!("{} {}", style("==>").cyan().bold(), message));
         }
     }
 
     /// Print a success message
     pub fn success(&self, message: &str) {
         if !self.quiet {
-            let _ = writeln!(self.term, "{} {}", style("✓").green().bold(), message);
+            let _ = self
+                .term
+                .write_line(&format!("{} {}", style("✓").green().bold(), message));
         }
     }
 
     /// Print a warning message
     pub fn warning(&self, message: &str) {
-        let _ = writeln!(self.term, "{} {}", style("Warning:").yellow().bold(), message);
+        let _ = self
+            .term
+            .write_line(&format!("{} {}", style("Warning:").yellow().bold(), message));
     }
 
     /// Print an error message
     pub fn error(&self, message: &str) {
-        let _ = writeln!(self.term, "{} {}", style("Error:").red().bold(), message);
+        let _ = self
+            .term
+            .write_line(&format!("{} {}", style("Error:").red().bold(), message));
     }
 
     /// Print a verbose/debug message
     pub fn debug(&self, message: &str) {
         if self.verbose && !self.quiet {
-            let _ = writeln!(self.term, "{} {}", style("DEBUG:").dim(), message);
+            let _ = self
+                .term
+                .write_line(&format!("{} {}", style("DEBUG:").dim(), message));
         }
     }
 
@@ -107,7 +116,7 @@ impl Output {
             .collect::<Vec<_>>()
             .join("  ");
 
-        println!("{}", style(header).bold());
+        println!("{}", style(&header).bold());
         println!("{}", style("-".repeat(header.len())).dim());
     }
 
