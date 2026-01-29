@@ -127,8 +127,8 @@ async fn run() -> Result<()> {
             }
         },
 
-        Some(Commands::Gc { dry_run }) => {
-            commands::gc::execute(dry_run, &output).await?;
+        Some(Commands::Clean { cache, dry_run }) => {
+            commands::clean::execute(dry_run, cache, &output).await?;
         }
 
         Some(Commands::Link { package, force }) => {
