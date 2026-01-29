@@ -22,7 +22,7 @@ pub struct GhcrClient {
 #[derive(Clone)]
 struct TokenCache {
     token: String,
-    package: String,
+    repository: String,
     expires_at: Instant,
 }
 
@@ -45,20 +45,46 @@ impl GhcrClient {
         })
     }
 
-    /// Get a bearer token for a package
-    async fn get_token(&self, package: &str) -> Result<String> {
+    fn repository_from_url(url: &str) -> Result<String> {
+        let parsed = reqwest::Url::parse(url).map_err(|err| {
+            ColdbrewError::GhcrAuthFailed(format!("Invalid bottle URL: {}", err))
+        })?;
+        let path = parsed.path();
+        let prefix = "/v2/";
+        let blobs = "/blobs/";
+
+        let start = path.find(prefix).ok_or_else(|| {
+            ColdbrewError::GhcrAuthFailed("Bottle URL missing /v2/ segment".to_string())
+        })?;
+        let after = &path[start + prefix.len()..];
+        let end = after.find(blobs).ok_or_else(|| {
+            ColdbrewError::GhcrAuthFailed("Bottle URL missing /blobs/ segment".to_string())
+        })?;
+
+        let repository = &after[..end];
+        if repository.is_empty() {
+            return Err(ColdbrewError::GhcrAuthFailed(
+                "Bottle URL has empty repository".to_string(),
+            ));
+        }
+
+        Ok(repository.to_string())
+    }
+
+    /// Get a bearer token for a repository
+    async fn get_token(&self, repository: &str) -> Result<String> {
         // Check cache
         {
             let cache = self.token_cache.read().await;
             if let Some(ref cached) = *cache {
-                if cached.package == package && cached.expires_at > Instant::now() {
+                if cached.repository == repository && cached.expires_at > Instant::now() {
                     return Ok(cached.token.clone());
                 }
             }
         }
 
         // Fetch new token
-        let scope = format!("repository:homebrew/core/{}:pull", package);
+        let scope = format!("repository:{}:pull", repository);
 
         let response = self
             .client
@@ -87,7 +113,7 @@ impl GhcrClient {
             let mut cache = self.token_cache.write().await;
             *cache = Some(TokenCache {
                 token: token_response.token.clone(),
-                package: package.to_string(),
+                repository: repository.to_string(),
                 expires_at: Instant::now() + Duration::from_secs(expires_in - 30), // Buffer
             });
         }
@@ -98,7 +124,7 @@ impl GhcrClient {
     /// Download a bottle to a file
     pub async fn download_bottle<F>(
         &self,
-        formula: &Formula,
+        _formula: &Formula,
         bottle_file: &BottleFile,
         dest: &Path,
         progress_callback: F,
@@ -107,9 +133,10 @@ impl GhcrClient {
         F: Fn(u64, u64),
     {
         let mut refreshed = false;
+        let repository = Self::repository_from_url(&bottle_file.url)?;
 
         loop {
-            let token = self.get_token(&formula.name).await?;
+            let token = self.get_token(&repository).await?;
 
             let response = self
                 .client
@@ -156,10 +183,11 @@ impl GhcrClient {
     /// Download a bottle and return the bytes
     pub async fn download_bottle_bytes(
         &self,
-        formula: &Formula,
+        _formula: &Formula,
         bottle_file: &BottleFile,
     ) -> Result<Vec<u8>> {
-        let token = self.get_token(&formula.name).await?;
+        let repository = Self::repository_from_url(&bottle_file.url)?;
+        let token = self.get_token(&repository).await?;
 
         let response = self
             .client
@@ -194,7 +222,7 @@ mod tests {
     #[ignore] // Requires network
     async fn test_get_token() {
         let client = GhcrClient::new().unwrap();
-        let token = client.get_token("jq").await.unwrap();
+        let token = client.get_token("homebrew/core/jq").await.unwrap();
         assert!(!token.is_empty());
     }
 }
