@@ -141,7 +141,7 @@ fn check_shims(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
 
             if broken > 0 {
                 warnings.push(format!(
-                    "{} broken shim(s) found. Run 'crew gc' to clean up",
+                    "{} broken shim(s) found. Run 'crew clean' to clean up",
                     broken
                 ));
                 println!(
