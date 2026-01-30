@@ -124,16 +124,6 @@ pub enum Commands {
         package: String,
     },
 
-    /// Show dependencies for a package
-    Deps {
-        /// Package name
-        package: String,
-
-        /// Show as tree
-        #[arg(short, long)]
-        tree: bool,
-    },
-
     /// Show packages that depend on a package
     Dependents {
         /// Package name
@@ -160,14 +150,19 @@ pub enum Commands {
         remove: bool,
     },
 
-    /// Manage the download cache
-    Cache {
-        #[command(subcommand)]
-        action: CacheCommands,
+    /// Show disk usage and cleanup candidates
+    Space {
+        /// Show itemized details
+        #[arg(short, long)]
+        details: bool,
     },
 
-    /// Garbage collection - remove old versions and orphan dependencies
-    Gc {
+    /// Cleanup old versions, cache, and other unused data
+    Clean {
+        /// Clean everything without prompts
+        #[arg(short, long)]
+        all: bool,
+
         /// Dry run - show what would be removed
         #[arg(short, long)]
         dry_run: bool,
@@ -187,12 +182,6 @@ pub enum Commands {
     Unlink {
         /// Package to unlink
         package: String,
-    },
-
-    /// Set up shell integration
-    Shell {
-        /// Shell to configure (bash, zsh, fish)
-        shell: Option<String>,
     },
 
     /// Check system for potential problems
@@ -217,22 +206,6 @@ pub enum Commands {
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         args: Vec<String>,
     },
-}
-
-#[derive(Subcommand)]
-pub enum CacheCommands {
-    /// List cached downloads
-    List,
-
-    /// Remove cached downloads
-    Clean {
-        /// Remove all cached files
-        #[arg(short, long)]
-        all: bool,
-    },
-
-    /// Show cache location and size
-    Info,
 }
 
 impl Cli {

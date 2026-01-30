@@ -2,17 +2,21 @@ name: CI
 
 on:
   push:
-    branches: ["main"]
-  pull_request:
 
 jobs:
   test:
-    name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Test (${{ matrix.name }})
+    runs-on: ${{ matrix.self_hosted }}
     strategy:
       fail-fast: false
       matrix:
-        os: ["ubuntu-latest", "macos-latest"]
+        include:
+          - name: ubuntu
+            github: ubuntu-latest
+            self_hosted: [self-hosted, Linux, X64]
+          - name: macos
+            github: macos-latest
+            self_hosted: [self-hosted, macOS, ARM64]
 
     steps:
       - name: Checkout
