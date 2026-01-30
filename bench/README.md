@@ -35,6 +35,7 @@ Environment variables supported by `bench/run.sh`:
 - `RUNS` (default `7`)
 - `WARMUP` (default `1`)
 - `FORMULA_COUNT` (default `10`)
+- `ALLOW_INSTALLED` (default `0`, set to `1` to include installed formulas)
 - `SEARCH_TERM` (default `python`)
 - `SINGLE_FORMULA` (default: first selected formula)
 - `CREW_BIN` (default `target/release/crew`)
@@ -54,5 +55,6 @@ Environment variables supported by `bench/run.sh`:
 - Coldbrew formulas are updated once before installs to ensure the index exists.
 - Coldbrew treats `name@version` as a version spec, so avoid `@` formulas unless
   you intend to install by version.
+- `meta.json` includes machine specs (OS, CPU, memory) for each run.
 - Results are written as JSON/Markdown per scenario. If `python3` is available,
   a `summary.md` table is generated.

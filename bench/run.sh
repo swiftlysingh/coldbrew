@@ -10,6 +10,7 @@ RUNS="${RUNS:-7}"
 WARMUP="${WARMUP:-1}"
 FORMULA_COUNT="${FORMULA_COUNT:-10}"
 SEARCH_TERM="${SEARCH_TERM:-python}"
+ALLOW_INSTALLED="${ALLOW_INSTALLED:-0}"
 
 CREW_BIN="${CREW_BIN:-$ROOT_DIR/target/release/crew}"
 BREW_BIN="${BREW_BIN:-brew}"
@@ -98,24 +99,46 @@ is_installed() {
 }
 
 selected=()
-for formula in "${primary_formulas[@]}"; do
-  if ! is_installed "$formula"; then
+
+contains_formula() {
+  local target="$1"
+  shift
+  for item in "$@"; do
+    if [ "$item" = "$target" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+add_formula() {
+  local formula="$1"
+  if ! contains_formula "$formula" "${selected[@]-}"; then
     selected+=("$formula")
   fi
-  if [ "${#selected[@]}" -ge "$FORMULA_COUNT" ]; then
-    break
-  fi
-done
+}
 
-if [ "${#selected[@]}" -lt "$FORMULA_COUNT" ]; then
-  for formula in "${fallback_formulas[@]}"; do
-    if ! is_installed "$formula"; then
-      selected+=("$formula")
-    fi
+select_from_list() {
+  local allow_installed="$1"
+  shift
+  local formula
+  for formula in "$@"; do
     if [ "${#selected[@]}" -ge "$FORMULA_COUNT" ]; then
       break
     fi
+    if [ "$allow_installed" -ne 1 ] && is_installed "$formula"; then
+      continue
+    fi
+    add_formula "$formula"
   done
+}
+
+select_from_list 0 "${primary_formulas[@]}"
+select_from_list 0 "${fallback_formulas[@]}"
+
+if [ "${#selected[@]}" -lt "$FORMULA_COUNT" ] && [ "$ALLOW_INSTALLED" -eq 1 ]; then
+  select_from_list 1 "${primary_formulas[@]}"
+  select_from_list 1 "${fallback_formulas[@]}"
 fi
 
 if [ "${#selected[@]}" -eq 0 ]; then
@@ -124,6 +147,9 @@ fi
 
 if [ "${#selected[@]}" -lt "$FORMULA_COUNT" ]; then
   echo "warning: only ${#selected[@]} formulas selected (requested $FORMULA_COUNT)" >&2
+  if [ "$ALLOW_INSTALLED" -ne 1 ]; then
+    echo "warning: set ALLOW_INSTALLED=1 to allow installed formulas" >&2
+  fi
 fi
 
 SINGLE_FORMULA="${SINGLE_FORMULA:-${selected[0]}}"
@@ -136,6 +162,7 @@ mkdir -p "$COLDBREW_HOME"
 BREW_ENV=(
   "HOMEBREW_NO_AUTO_UPDATE=1"
   "HOMEBREW_NO_INSTALL_CLEANUP=1"
+  "HOMEBREW_NO_INSTALL_UPGRADE=1"
   "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK=1"
   "HOMEBREW_CACHE=$BREW_CACHE"
 )
@@ -156,6 +183,13 @@ crew_cmd install "${selected[@]}"
 brew_cmd install --formula --force-bottle "${selected[@]}"
 
 log "Writing metadata"
+os_name="$(sw_vers -productName 2>/dev/null || uname -s)"
+os_version="$(sw_vers -productVersion 2>/dev/null || uname -r)"
+arch_name="$(uname -m 2>/dev/null || true)"
+cpu_brand="$(sysctl -n machdep.cpu.brand_string 2>/dev/null || true)"
+cpu_cores="$(sysctl -n hw.ncpu 2>/dev/null || true)"
+mem_bytes="$(sysctl -n hw.memsize 2>/dev/null || true)"
+uname_str="$(uname -a 2>/dev/null || true)"
 {
   echo "{"
   echo "  \"timestamp\": \"$(json_escape "$timestamp")\","
@@ -167,6 +201,15 @@ log "Writing metadata"
   echo "  \"crew_version\": \"$(json_escape "$($CREW_BIN --version)")\","
   echo "  \"brew_version\": \"$(json_escape "$($BREW_BIN --version | head -n 1)")\","
   echo "  \"hyperfine_version\": \"$(json_escape "$($HYPERFINE_BIN --version)")\","
+  echo "  \"machine\": {"
+  echo "    \"os\": \"$(json_escape "$os_name")\","
+  echo "    \"os_version\": \"$(json_escape "$os_version")\","
+  echo "    \"arch\": \"$(json_escape "$arch_name")\","
+  echo "    \"cpu\": \"$(json_escape "$cpu_brand")\","
+  echo "    \"cpu_cores\": \"$(json_escape "$cpu_cores")\","
+  echo "    \"memory_bytes\": \"$(json_escape "$mem_bytes")\","
+  echo "    \"uname\": \"$(json_escape "$uname_str")\""
+  echo "  },"
   echo "  \"formulas\": ["
   for i in "${!selected[@]}"; do
     if [ "$i" -gt 0 ]; then
