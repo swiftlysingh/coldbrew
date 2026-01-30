@@ -83,26 +83,12 @@ crew install # Install from lockfile
 | `which <binary>` | Show which package provides a binary |
 | `pin <package>` | Pin a package version |
 | `default <package@version>` | Set default version |
-| `deps <package>` | Show dependencies |
 | `init` | Create coldbrew.toml |
 | `lock` | Generate lockfile |
 | `tap <user/repo>` | Add third-party repository |
-| `cache clean` | Clean download cache |
-| `gc` | Garbage collection |
+| `space` | Show disk usage and cleanup candidates |
+| `clean [--all] [--dry-run]` | Interactive cleanup |
 | `doctor` | Check for problems |
-| `shell` | Shell integration setup |
-
-## Shell Integration
-
-Add Coldbrew to your PATH:
-
-```bash
-# bash/zsh
-export PATH="$HOME/.coldbrew/bin:$PATH"
-
-# fish
-fish_add_path ~/.coldbrew/bin
-```
 
 ## Development
 
