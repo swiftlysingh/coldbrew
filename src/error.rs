@@ -25,7 +25,9 @@ pub enum ColdbrewError {
     #[error("Package '{name}' is already installed at version '{version}'")]
     PackageAlreadyInstalled { name: String, version: String },
 
-    #[error("Requested version '{requested}' for '{name}' is not available (current: {available})")]
+    #[error(
+        "Requested version '{requested}' for '{name}' is not available (current: {available})"
+    )]
     VersionNotAvailable {
         name: String,
         requested: String,

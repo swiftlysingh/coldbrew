@@ -144,15 +144,8 @@ pub async fn migrate(
             Output::version(installed_version)
         ));
 
-        match ops::install::install(
-            paths,
-            &name,
-            Some(installed_version),
-            false,
-            false,
-            output,
-        )
-        .await
+        match ops::install::install(paths, &name, Some(installed_version), false, false, output)
+            .await
         {
             Ok(_) => {
                 summary

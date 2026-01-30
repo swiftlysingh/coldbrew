@@ -2,8 +2,8 @@
 
 use crate::cli::output::Output;
 use crate::error::Result;
-use crate::ops::migrate::{MigrationFailure, MigrationSkip};
 use crate::ops;
+use crate::ops::migrate::{MigrationFailure, MigrationSkip};
 use crate::storage::Paths;
 
 /// Execute the migrate command
