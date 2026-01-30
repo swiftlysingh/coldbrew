@@ -66,6 +66,20 @@ impl Store {
         })
     }
 
+    /// Check if a store entry already exists
+    pub fn entry_exists(&self, sha256: &str) -> bool {
+        self.paths.store_entry(sha256).exists()
+    }
+
+    /// Get the size of an existing store entry
+    pub fn entry_size(&self, sha256: &str) -> Result<u64> {
+        let entry_path = self.paths.store_entry(sha256);
+        if !entry_path.exists() {
+            return Err(ColdbrewError::PathNotFound(entry_path));
+        }
+        dir_size(&entry_path)
+    }
+
     /// Materialize a store entry into the cellar
     pub fn materialize(&self, sha256: &str, name: &str, version: &str) -> Result<PathBuf> {
         let entry_path = self.paths.store_entry(sha256);
