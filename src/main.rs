@@ -4,7 +4,7 @@ use clap::CommandFactory;
 use clap_complete::generate;
 use coldbrew::cli::commands;
 use coldbrew::cli::output::Output;
-use coldbrew::cli::{CacheCommands, Cli, Commands};
+use coldbrew::cli::{Cli, Commands};
 use coldbrew::error::Result;
 use coldbrew::storage::Paths;
 use std::io;
@@ -95,10 +95,6 @@ async fn run() -> Result<()> {
             commands::default::execute(&package, &output).await?;
         }
 
-        Some(Commands::Deps { package, tree }) => {
-            commands::deps::execute(&package, tree, &output).await?;
-        }
-
         Some(Commands::Dependents { package }) => {
             commands::dependents::execute(&package, &output).await?;
         }
@@ -115,20 +111,12 @@ async fn run() -> Result<()> {
             commands::tap::execute(tap.as_deref(), remove, &output).await?;
         }
 
-        Some(Commands::Cache { action }) => match action {
-            CacheCommands::List => {
-                commands::cache::execute_list(&output).await?;
-            }
-            CacheCommands::Clean { all } => {
-                commands::cache::execute_clean(all, &output).await?;
-            }
-            CacheCommands::Info => {
-                commands::cache::execute_info(&output).await?;
-            }
-        },
+        Some(Commands::Space { details }) => {
+            commands::space::execute(details, &output).await?;
+        }
 
-        Some(Commands::Gc { dry_run }) => {
-            commands::gc::execute(dry_run, &output).await?;
+        Some(Commands::Clean { all, dry_run }) => {
+            commands::clean::execute(dry_run, all, &output).await?;
         }
 
         Some(Commands::Link { package, force }) => {
@@ -137,10 +125,6 @@ async fn run() -> Result<()> {
 
         Some(Commands::Unlink { package }) => {
             commands::link::execute_unlink(&package, &output).await?;
-        }
-
-        Some(Commands::Shell { shell }) => {
-            commands::shell::execute(shell.as_deref(), &output).await?;
         }
 
         Some(Commands::Doctor) => {
