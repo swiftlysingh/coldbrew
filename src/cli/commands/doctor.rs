@@ -78,10 +78,10 @@ fn check_path(paths: &Paths, _output: &Output, warnings: &mut Vec<String>) {
             console::style("✓").green()
         );
     } else {
-        warnings.push(
-            "Coldbrew bin directory not in PATH. Run 'crew shell' for setup instructions"
-                .to_string(),
-        );
+        warnings.push(format!(
+            "Coldbrew bin directory not in PATH. Add {} to your PATH.",
+            bin_dir.display()
+        ));
         println!(
             "  {} PATH: {} not in PATH",
             console::style("!").yellow(),

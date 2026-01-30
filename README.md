@@ -89,19 +89,6 @@ crew install # Install from lockfile
 | `space` | Show disk usage and cleanup candidates |
 | `clean [--all] [--dry-run]` | Interactive cleanup |
 | `doctor` | Check for problems |
-| `shell` | Shell integration setup |
-
-## Shell Integration
-
-Add Coldbrew to your PATH:
-
-```bash
-# bash/zsh
-export PATH="$HOME/.coldbrew/bin:$PATH"
-
-# fish
-fish_add_path ~/.coldbrew/bin
-```
 
 ## Development
 
