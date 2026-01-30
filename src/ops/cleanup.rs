@@ -387,7 +387,10 @@ fn dir_size(path: &Path) -> u64 {
         return 0;
     }
 
-    for entry in walkdir::WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
+    for entry in walkdir::WalkDir::new(path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
         if entry.file_type().is_file() {
             if let Ok(metadata) = entry.metadata() {
                 total += metadata.len();

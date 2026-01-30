@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+staged_rs_files=$(git diff --cached --name-only --diff-filter=ACMR -- "*.rs" || true)
+if [[ -z "${staged_rs_files}" ]]; then
+    exit 0
+fi
+
+echo "Running cargo fmt on staged Rust files..."
+cargo fmt
+
+while IFS= read -r file; do
+    if [[ -n "${file}" && -f "${file}" ]]; then
+        git add "${file}"
+    fi
+done <<< "${staged_rs_files}"
