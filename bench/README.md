@@ -36,6 +36,7 @@ Environment variables supported by `bench/run.sh`:
 - `WARMUP` (default `1`)
 - `FORMULA_COUNT` (default `10`)
 - `SEARCH_TERM` (default `python`)
+- `SINGLE_FORMULA` (default: first selected formula)
 - `CREW_BIN` (default `target/release/crew`)
 - `BREW_BIN` (default `brew`)
 - `HYPERFINE_BIN` (default `hyperfine`)
@@ -43,6 +44,7 @@ Environment variables supported by `bench/run.sh`:
 - `LOGS_ROOT` (default `bench/logs`)
 - `STATE_ROOT` (default `bench/state`)
 - `COLDBREW_HOME` (default `bench/state/coldbrew`)
+- `BREW_CACHE` (default `bench/state/brew-cache`)
 
 ## Notes
 
@@ -50,5 +52,7 @@ Environment variables supported by `bench/run.sh`:
   Homebrew downloads with `HOMEBREW_CACHE` under `bench/state`.
 - The script disables Homebrew auto-update and cleanup for stability.
 - Coldbrew formulas are updated once before installs to ensure the index exists.
+- Coldbrew treats `name@version` as a version spec, so avoid `@` formulas unless
+  you intend to install by version.
 - Results are written as JSON/Markdown per scenario. If `python3` is available,
   a `summary.md` table is generated.

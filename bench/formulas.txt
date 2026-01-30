@@ -6,9 +6,9 @@ ripgrep
 wget
 git
 cmake
-openssl@3
-python@3.12
 node
+sqlite
+libyaml
 
 --fallback--
 
@@ -18,8 +18,8 @@ fzf
 neovim
 htop
 sqlite
-icu4c
 xz
-pkg-config
 gettext
 libyaml
+zstd
+libuv
