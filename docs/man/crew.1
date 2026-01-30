@@ -123,6 +123,16 @@ Force overwrite if file exists.
 .B crew lock
 .br
 Generate a lockfile from coldbrew.toml.
+.SS migrate
+.B crew migrate [OPTIONS]
+.br
+Migrate Homebrew-installed formulas to Coldbrew.
+.TP
+.B \-\-brew <path>
+Path to Homebrew brew binary.
+.TP
+.B \-\-dry-run
+Show what would be migrated without making changes.
 .SS tap
 .B crew tap [OPTIONS] [user/repo]
 .br
@@ -146,10 +156,13 @@ Remove all cached files.
 .TP
 .B crew cache info
 Show cache location and size.
-.SS gc
-.B crew gc [\-\-dry-run]
+.SS clean
+.B crew clean [OPTIONS]
 .br
-Garbage collection \- remove old versions and orphan dependencies.
+Cleanup old versions, cache, and other unused data.
+.TP
+.B \-a, \-\-all
+Clean everything without prompts.
 .TP
 .B \-d, \-\-dry-run
 Show what would be removed without deleting.
