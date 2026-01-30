@@ -40,6 +40,10 @@ pub struct Settings {
     /// Enable analytics (default: false)
     #[serde(default)]
     pub analytics: bool,
+
+    /// Enable CDN racing for downloads (default: false)
+    #[serde(default)]
+    pub cdn_racing: bool,
 }
 
 fn default_true() -> bool {
@@ -61,6 +65,7 @@ impl Default for Settings {
             parallel_downloads: 4,
             keep_versions: 2,
             analytics: false,
+            cdn_racing: false,
         }
     }
 }
@@ -141,6 +146,7 @@ mod tests {
         assert!(config.defaults.is_empty());
         assert!(config.pins.is_empty());
         assert!(config.settings.auto_update);
+        assert!(!config.settings.cdn_racing);
     }
 
     #[test]

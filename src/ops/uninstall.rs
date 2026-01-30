@@ -3,7 +3,7 @@
 use crate::cli::output::Output;
 use crate::config::GlobalConfig;
 use crate::error::{ColdbrewError, Result};
-use crate::storage::{Cellar, Paths, ShimManager};
+use crate::storage::{Cellar, Database, Paths, ShimManager};
 
 /// Uninstall a package
 pub async fn uninstall(
@@ -46,6 +46,11 @@ pub async fn uninstall(
     let mut removed = Vec::new();
 
     for version in &versions_to_remove {
+        let bottle_sha = cellar
+            .get_package(name, version)
+            .ok()
+            .and_then(|pkg| pkg.bottle_sha256.clone());
+
         // Get binaries before removal
         let binaries = cellar.get_binaries(name, version)?;
 
@@ -69,6 +74,12 @@ pub async fn uninstall(
         // Remove from cellar
         output.debug(&format!("Removing {} {}...", name, version));
         cellar.uninstall(name, version)?;
+
+        if let Some(sha256) = bottle_sha {
+            let db = Database::new(paths.clone());
+            let conn = db.connect()?;
+            db.remove_store_ref(&conn, &sha256, name, version)?;
+        }
 
         removed.push((name.to_string(), version.clone()));
     }
