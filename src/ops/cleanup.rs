@@ -75,6 +75,7 @@ pub fn apply_cleanup(
     dry_run: bool,
 ) -> Result<CleanupResult> {
     let cellar = Cellar::new(paths.clone());
+    let cache = Cache::new(paths.clone());
     let shim_manager = ShimManager::new(paths.clone());
     let mut config = GlobalConfig::load(paths)?;
     let mut config_dirty = false;
@@ -103,7 +104,15 @@ pub fn apply_cleanup(
             CleanupKind::CacheDownloads | CleanupKind::IndexCache | CleanupKind::BrokenShims => {
                 for item in &category.items {
                     if !dry_run && item.path.exists() {
-                        std::fs::remove_file(&item.path)?;
+                        if category.kind == CleanupKind::CacheDownloads {
+                            if let Some(sha) = extract_blob_sha(&item.path) {
+                                cache.remove(&sha)?;
+                            } else {
+                                std::fs::remove_file(&item.path)?;
+                            }
+                        } else {
+                            std::fs::remove_file(&item.path)?;
+                        }
                     }
                     result.removed += 1;
                     result.freed += item.size;
@@ -191,6 +200,13 @@ pub fn apply_cleanup(
     Ok(result)
 }
 
+fn extract_blob_sha(path: &Path) -> Option<String> {
+    let file_name = path.file_name()?.to_str()?;
+    file_name
+        .strip_suffix(".bottle.tar.gz")
+        .map(|sha| sha.to_string())
+}
+
 fn collect_old_versions(installed: &[InstalledPackage]) -> Result<CleanupCategory> {
     let mut by_name: HashMap<String, Vec<&InstalledPackage>> = HashMap::new();
     for pkg in installed {
@@ -226,7 +242,7 @@ fn collect_cache_downloads(cache: &Cache) -> Result<CleanupCategory> {
     let mut items = Vec::new();
     for bottle in cache.list()? {
         items.push(CleanupItem {
-            label: format!("{} {} ({})", bottle.name, bottle.version, bottle.tag),
+            label: bottle.label(),
             path: bottle.path,
             size: bottle.size,
             name: None,
