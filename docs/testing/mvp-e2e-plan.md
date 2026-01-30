@@ -27,18 +27,17 @@ Verify the core user flows work end-to-end with real network data and a clean fi
 
 ### 3) Dependencies
 - `coldbrew install ffmpeg` (or another dep-heavy formula)
-- `coldbrew deps ffmpeg`
 **Expected:** dependencies are installed and listed.
 
 ### 4) Upgrade (Interactive)
 - `coldbrew upgrade`
 **Expected:** shows plan; if no upgrades, exits cleanly.
 
-### 5) Cache and GC
-- `coldbrew cache info`
-- `coldbrew cache list`
-- `coldbrew gc --dry-run`
-**Expected:** cache stats show; gc shows candidate removals without changes.
+### 5) Space and Clean
+- `coldbrew space`
+- `coldbrew space --details`
+- `coldbrew clean --dry-run`
+**Expected:** space shows disk usage; clean shows candidate removals without changes.
 
 ### 6) Uninstall
 - `coldbrew uninstall jq`

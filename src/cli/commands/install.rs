@@ -2,9 +2,11 @@
 
 use crate::cli::output::Output;
 use crate::core::version::parse_package_spec;
-use crate::error::Result;
+use crate::error::{ColdbrewError, Result};
 use crate::ops;
-use crate::storage::Paths;
+use crate::storage::{Cellar, Paths};
+use std::env;
+use std::path::{Path, PathBuf};
 
 /// Execute the install command
 pub async fn execute(
@@ -43,6 +45,20 @@ pub async fn execute(
                 if let Some(ref caveats) = installed.caveats {
                     output.caveats(caveats);
                 }
+
+                hint_path(&paths, &installed, output);
+            }
+            Err(ColdbrewError::PackageAlreadyInstalled { name, version }) => {
+                output.info(&format!(
+                    "Already installed {} {}",
+                    Output::package_name(&name),
+                    Output::version(&version)
+                ));
+
+                let cellar = Cellar::new(paths.clone());
+                if let Ok(installed) = cellar.get_package(&name, &version) {
+                    hint_path(&paths, &installed, output);
+                }
             }
             Err(e) => {
                 output.error(&format!("Failed to install {}: {}", name, e));
@@ -55,4 +71,28 @@ pub async fn execute(
     }
 
     Ok(())
+}
+
+fn hint_path(paths: &Paths, installed: &crate::core::package::InstalledPackage, output: &Output) {
+    if installed.keg_only || !installed.has_binaries() {
+        return;
+    }
+
+    let bin_dir = paths.bin_dir();
+    let path_var = env::var("PATH").unwrap_or_default();
+    if !path_includes_dir(&path_var, &bin_dir) {
+        output.hint(&format!(
+            "Add {} to your PATH to use installed binaries",
+            bin_dir.display()
+        ));
+    }
+}
+
+fn path_includes_dir(path_var: &str, dir: &Path) -> bool {
+    let normalized_dir = normalize_path(dir);
+    env::split_paths(path_var).any(|entry| normalize_path(&entry) == normalized_dir)
+}
+
+fn normalize_path(path: &Path) -> PathBuf {
+    path.components().collect()
 }

@@ -83,14 +83,12 @@ crew install # Install from lockfile
 | `which <binary>` | Show which package provides a binary |
 | `pin <package>` | Pin a package version |
 | `default <package@version>` | Set default version |
-| `deps <package>` | Show dependencies |
 | `init` | Create coldbrew.toml |
 | `lock` | Generate lockfile |
 | `tap <user/repo>` | Add third-party repository |
-| `cache clean` | Clean download cache |
-| `gc` | Garbage collection |
+| `space` | Show disk usage and cleanup candidates |
+| `clean [--all] [--dry-run]` | Interactive cleanup |
 | `doctor` | Check for problems |
-| `shell` | Shell integration setup |
 
 ## Man Page
 
@@ -104,16 +102,20 @@ cp docs/man/crew.1 ~/.local/share/man/man1/
 man crew
 ```
 
-## Shell Integration
+## Development
 
-Add Coldbrew to your PATH:
+Enable the repository hooks (run once per clone):
 
 ```bash
-# bash/zsh
-export PATH="$HOME/.coldbrew/bin:$PATH"
+git config core.hooksPath .githooks
+```
 
-# fish
-fish_add_path ~/.coldbrew/bin
+The pre-commit hook runs `cargo fmt` and re-stages Rust files that were
+already staged so formatting issues are fixed before you commit. If
+`cargo fmt` is missing, install rustfmt with:
+
+```bash
+rustup component add rustfmt
 ```
 
 ## License

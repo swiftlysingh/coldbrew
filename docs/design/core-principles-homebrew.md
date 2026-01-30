@@ -57,14 +57,14 @@ engineering guidelines for building and evolving the Coldbrew CLI.
 - Dependencies stay pinned unless explicitly upgraded.
 - Warn before cascades and show impact.
 - Opt-in cascade: `crew upgrade --cascade`.
-- Tools: `crew deps <pkg>`, `crew dependents <pkg>`.
+- Tools: `crew dependents <pkg>`.
 
 ### Cleanup and Garbage Collection
 **Problem:** Auto-cleanups can delete needed versions or caches.  
 **Coldbrew behavior:**
-- `crew gc` is interactive by default.
-- `crew gc --yes` for non-interactive environments.
-- Cache cleanup is separate: `crew cache clean`.
+- `crew clean` is interactive by default.
+- `crew clean --all` for non-interactive environments.
+- `crew space` shows disk usage and cleanup candidates.
 - No auto-removal in the background.
 
 ### Performance

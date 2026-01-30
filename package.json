@@ -1,8 +1,8 @@
 {
   "name": "coldbrew",
-  "version": "0.1.0",
   "private": true,
+  "version": "0.1.0",
   "scripts": {
-    "build": "cargo build"
+    "build": "cargo build --release"
   }
 }
