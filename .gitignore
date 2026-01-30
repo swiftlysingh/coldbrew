@@ -23,3 +23,8 @@
 *.so
 *.dylib
 *.dll
+
+# Benchmarks
+bench/results/
+bench/logs/
+bench/state/

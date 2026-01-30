@@ -1,0 +1,25 @@
+# Primary formulas (preferred)
+jq
+tree
+fd
+ripgrep
+wget
+git
+cmake
+openssl@3
+python@3.12
+node
+
+--fallback--
+
+# Fallback formulas (used when primary already installed)
+bat
+fzf
+neovim
+htop
+sqlite
+icu4c
+xz
+pkg-config
+gettext
+libyaml
