@@ -1,6 +1,6 @@
 //! Package installation
 
-use crate::cli::output::{format_duration, Output};
+use crate::cli::output::{format_bytes, format_duration, Output};
 use crate::config::GlobalConfig;
 use crate::core::package::{InstalledPackage, PackageMetadata, RuntimeDependency};
 use crate::core::{BottleFile, DependencyResolver, Formula, Platform};
@@ -11,10 +11,9 @@ use crate::storage::{Cache, Cellar, Database, Paths, ShimManager, Store};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
 
@@ -45,20 +44,19 @@ pub async fn install(
     output: &Output,
 ) -> Result<InstalledPackage> {
     let config = GlobalConfig::load(paths)?;
-    let parallel_downloads = config.settings.parallel_downloads.max(1);
     let cdn_racing = config.settings.cdn_racing;
 
     let index = Index::new(paths.clone());
     let cellar = Cellar::new(paths.clone());
     let cache = Arc::new(Cache::new(paths.clone()));
-    let store = Store::new(paths.clone());
+    let store = Arc::new(Store::new(paths.clone()));
     let shim_manager = ShimManager::new(paths.clone());
     let ghcr = Arc::new(GhcrClient::new_with_options(cdn_racing)?);
     let platform = Platform::detect()?;
     let ctx = InstallContext {
         paths,
         cache: cache.as_ref(),
-        store: &store,
+        store: store.as_ref(),
         shim_manager: &shim_manager,
         ghcr: ghcr.as_ref(),
         platform: &platform,
@@ -97,6 +95,14 @@ pub async fn install(
 
     let download_groups =
         plan_download_groups(&ctx, &install_order, &formula_map, name, version, force)?;
+    let parallel_downloads = if download_groups.is_empty() {
+        1
+    } else {
+        std::cmp::min(
+            config.settings.parallel_downloads.max(1),
+            download_groups.len(),
+        )
+    };
 
     let mut download_manager = if !download_groups.is_empty() {
         output.info(&format!(
@@ -107,9 +113,11 @@ pub async fn install(
         cache.init()?;
         Some(DownloadManager::start(
             cache.clone(),
+            store.clone(),
             ghcr.clone(),
             download_groups,
             parallel_downloads,
+            paths.clone(),
             output,
         ))
     } else {
@@ -159,7 +167,7 @@ pub async fn install(
         let bottle_plan = resolve_bottle(formula, ctx.platform, &pkg_name)?;
 
         if let Some(manager) = download_manager.as_mut() {
-            manager.wait_for(&bottle_plan.file.sha256).await?;
+            manager.wait_for(&bottle_plan.file.sha256, output).await?;
         }
 
         let options = InstallOptions {
@@ -186,7 +194,7 @@ pub async fn install(
     }
 
     if let Some(manager) = download_manager.as_mut() {
-        manager.wait_for_all().await?;
+        manager.wait_for_all(output).await?;
     }
 
     root_installed.ok_or_else(|| ColdbrewError::PackageNotFound(name.to_string()))
@@ -255,6 +263,21 @@ struct BottlePlan {
     file: BottleFile,
 }
 
+struct PrepareContext<'a> {
+    paths: &'a Paths,
+    cache: &'a Cache,
+    store: &'a Store,
+    ghcr: &'a GhcrClient,
+}
+
+struct PrepareResult {
+    bytes_downloaded: u64,
+    download_duration: Duration,
+    extract_duration: Duration,
+    total_duration: Duration,
+    downloaded: bool,
+}
+
 fn resolve_bottle(formula: &Formula, platform: &Platform, package: &str) -> Result<BottlePlan> {
     let bottle_tags = platform.bottle_tags();
     let (bottle_tag, bottle_file) = formula
@@ -279,16 +302,28 @@ struct DownloadGroup {
     tag: String,
     formula: Formula,
     bottle_file: BottleFile,
-    dest: PathBuf,
+}
+
+struct DownloadResult {
+    name: String,
+    version: String,
+    bytes_downloaded: u64,
+    download_duration: Duration,
+    extract_duration: Duration,
+    total_duration: Duration,
+    downloaded: bool,
 }
 
 struct DownloadHandle {
-    handle: JoinHandle<Result<()>>,
+    handle: JoinHandle<Result<DownloadResult>>,
 }
 
 struct DownloadManager {
     handles: HashMap<String, DownloadHandle>,
     progress: Option<Arc<DownloadProgress>>,
+    bytes_downloaded: u64,
+    download_duration: Duration,
+    extract_duration: Duration,
 }
 
 struct DownloadProgress {
@@ -330,9 +365,11 @@ impl DownloadProgress {
 impl DownloadManager {
     fn start(
         cache: Arc<Cache>,
+        store: Arc<Store>,
         ghcr: Arc<GhcrClient>,
         groups: Vec<DownloadGroup>,
         parallel_downloads: usize,
+        paths: Paths,
         output: &Output,
     ) -> Self {
         let semaphore = Arc::new(Semaphore::new(parallel_downloads.max(1)));
@@ -342,15 +379,19 @@ impl DownloadManager {
         for group in groups {
             let sha256 = group.sha256.clone();
             let cache = cache.clone();
+            let store = store.clone();
             let ghcr = ghcr.clone();
             let semaphore = semaphore.clone();
             let progress = progress.clone();
+            let paths = paths.clone();
 
             let handle = tokio::spawn(async move {
                 let _permit = semaphore.acquire_owned().await.map_err(|err| {
                     ColdbrewError::Other(format!("Failed to acquire download slot: {}", err))
                 })?;
-                let result = download_group(ghcr.as_ref(), cache.as_ref(), group).await;
+                let result =
+                    download_group(&paths, ghcr.as_ref(), cache.as_ref(), store.as_ref(), group)
+                        .await;
                 if let Some(progress) = progress.as_ref() {
                     progress.mark_complete();
                 }
@@ -364,28 +405,77 @@ impl DownloadManager {
             output.debug("No downloads needed");
         }
 
-        Self { handles, progress }
+        Self {
+            handles,
+            progress,
+            bytes_downloaded: 0,
+            download_duration: Duration::ZERO,
+            extract_duration: Duration::ZERO,
+        }
     }
 
-    async fn wait_for(&mut self, sha256: &str) -> Result<()> {
+    async fn wait_for(&mut self, sha256: &str, output: &Output) -> Result<()> {
         if let Some(handle) = self.handles.remove(sha256) {
-            handle
+            let result = handle
                 .handle
                 .await
                 .map_err(|err| ColdbrewError::Other(err.to_string()))??;
+            self.record_result(&result, output);
         }
         Ok(())
     }
 
-    async fn wait_for_all(&mut self) -> Result<()> {
+    async fn wait_for_all(&mut self, output: &Output) -> Result<()> {
         let keys: Vec<String> = self.handles.keys().cloned().collect();
         for key in keys {
-            self.wait_for(&key).await?;
+            self.wait_for(&key, output).await?;
         }
         if let Some(progress) = self.progress.as_ref() {
             progress.bar.finish_and_clear();
         }
+        self.print_summary(output);
         Ok(())
+    }
+
+    fn record_result(&mut self, result: &DownloadResult, output: &Output) {
+        if result.downloaded && result.bytes_downloaded > 0 {
+            output.debug(&format!(
+                "Downloaded {} {} ({}) in {}",
+                result.name,
+                result.version,
+                format_bytes(result.bytes_downloaded),
+                format_duration(result.download_duration.as_secs())
+            ));
+        }
+
+        if result.total_duration > Duration::ZERO {
+            output.debug(&format!(
+                "Prepared {} {} in {}",
+                result.name,
+                result.version,
+                format_duration(result.total_duration.as_secs())
+            ));
+        }
+
+        self.bytes_downloaded += result.bytes_downloaded;
+        self.download_duration += result.download_duration;
+        self.extract_duration += result.extract_duration;
+    }
+
+    fn print_summary(&self, output: &Output) {
+        if self.bytes_downloaded > 0 {
+            output.debug(&format!(
+                "Downloaded {} total in {}",
+                format_bytes(self.bytes_downloaded),
+                format_duration(self.download_duration.as_secs())
+            ));
+        }
+        if self.extract_duration > Duration::ZERO {
+            output.debug(&format!(
+                "Store extraction time {}",
+                format_duration(self.extract_duration.as_secs())
+            ));
+        }
     }
 }
 
@@ -425,11 +515,9 @@ fn plan_download_groups(
         let bottle_plan = resolve_bottle(formula, ctx.platform, pkg_name)?;
 
         let sha256 = bottle_plan.file.sha256.clone();
-        if ctx.cache.is_cached(&sha256) {
+        if ctx.store.entry_exists(&sha256) {
             continue;
         }
-
-        let dest = ctx.cache.blob_path(&sha256);
 
         if groups.contains_key(&sha256) {
             continue;
@@ -444,7 +532,6 @@ fn plan_download_groups(
                 tag: bottle_plan.tag.clone(),
                 formula: formula.clone(),
                 bottle_file: bottle_plan.file.clone(),
-                dest,
             },
         );
     }
@@ -452,43 +539,140 @@ fn plan_download_groups(
     Ok(groups.into_values().collect())
 }
 
-async fn download_group(ghcr: &GhcrClient, cache: &Cache, group: DownloadGroup) -> Result<()> {
-    if group.dest.exists() {
-        let size = group.dest.metadata().map(|meta| meta.len()).unwrap_or(0);
-        cache.record_blob_metadata(
-            &group.sha256,
-            Some(&group.name),
-            Some(&group.version),
-            Some(&group.tag),
-            size,
-        )?;
-        return Ok(());
+async fn download_group(
+    paths: &Paths,
+    ghcr: &GhcrClient,
+    cache: &Cache,
+    store: &Store,
+    group: DownloadGroup,
+) -> Result<DownloadResult> {
+    let bottle_plan = BottlePlan {
+        tag: group.tag.clone(),
+        file: group.bottle_file.clone(),
+    };
+
+    let prepare_ctx = PrepareContext {
+        paths,
+        cache,
+        store,
+        ghcr,
+    };
+
+    let prepare = prepare_bottle(
+        &prepare_ctx,
+        &group.formula,
+        &bottle_plan,
+        &group.name,
+        &group.version,
+    )
+    .await?;
+
+    Ok(DownloadResult {
+        name: group.name,
+        version: group.version,
+        bytes_downloaded: prepare.bytes_downloaded,
+        download_duration: prepare.download_duration,
+        extract_duration: prepare.extract_duration,
+        total_duration: prepare.total_duration,
+        downloaded: prepare.downloaded,
+    })
+}
+
+async fn prepare_bottle(
+    ctx: &PrepareContext<'_>,
+    formula: &Formula,
+    bottle_plan: &BottlePlan,
+    name: &str,
+    version: &str,
+) -> Result<PrepareResult> {
+    let start = Instant::now();
+    let mut download_duration = Duration::ZERO;
+    let mut extract_duration = Duration::ZERO;
+    let mut bytes_downloaded = 0;
+    let mut downloaded = false;
+
+    let sha256 = &bottle_plan.file.sha256;
+
+    for attempt in 1..=2 {
+        let dest = ctx.cache.blob_path(sha256);
+        if !dest.exists() {
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            let temp_path = ctx.cache.blob_temp_path(sha256);
+            if temp_path.exists() {
+                let _ = fs::remove_file(&temp_path);
+            }
+
+            let downloaded_bytes = Arc::new(AtomicU64::new(0));
+            let downloaded_bytes_clone = downloaded_bytes.clone();
+            let download_start = Instant::now();
+            ctx.ghcr
+                .download_bottle(formula, &bottle_plan.file, &temp_path, |downloaded, _| {
+                    downloaded_bytes_clone.store(downloaded, Ordering::Relaxed);
+                })
+                .await?;
+            fs::rename(&temp_path, &dest)?;
+            let reported = downloaded_bytes.load(Ordering::Relaxed);
+            let size = dest.metadata().map(|meta| meta.len()).unwrap_or(0);
+            let size = if reported > 0 { reported } else { size };
+            ctx.cache.record_blob_metadata(
+                sha256,
+                Some(name),
+                Some(version),
+                Some(&bottle_plan.tag),
+                size,
+            )?;
+
+            downloaded = true;
+            download_duration += download_start.elapsed();
+            bytes_downloaded = bytes_downloaded.max(size);
+        } else {
+            let size = dest.metadata().map(|meta| meta.len()).unwrap_or(0);
+            ctx.cache.record_blob_metadata(
+                sha256,
+                Some(name),
+                Some(version),
+                Some(&bottle_plan.tag),
+                size,
+            )?;
+        }
+
+        if let Err(err) = verify::verify_bottle(&dest, sha256, name) {
+            if attempt < 2 {
+                ctx.cache.remove(sha256)?;
+                continue;
+            }
+            return Err(err);
+        }
+
+        let extract_start = Instant::now();
+        match ctx.store.ensure_entry(sha256, &dest) {
+            Ok(entry) => {
+                extract_duration += extract_start.elapsed();
+                let db = Database::new(ctx.paths.clone());
+                let conn = db.connect()?;
+                db.upsert_store_entry(&conn, sha256, entry.size_bytes)?;
+                break;
+            }
+            Err(err) => {
+                if attempt < 2 {
+                    ctx.cache.remove(sha256)?;
+                    continue;
+                }
+                return Err(err);
+            }
+        }
     }
 
-    if let Some(parent) = group.dest.parent() {
-        fs::create_dir_all(parent)?;
-    }
-
-    let temp_path = cache.blob_temp_path(&group.sha256);
-
-    if temp_path.exists() {
-        let _ = fs::remove_file(&temp_path);
-    }
-
-    ghcr.download_bottle(&group.formula, &group.bottle_file, &temp_path, |_, _| {})
-        .await?;
-
-    fs::rename(&temp_path, &group.dest)?;
-    let size = group.dest.metadata().map(|meta| meta.len()).unwrap_or(0);
-    cache.record_blob_metadata(
-        &group.sha256,
-        Some(&group.name),
-        Some(&group.version),
-        Some(&group.tag),
-        size,
-    )?;
-
-    Ok(())
+    Ok(PrepareResult {
+        bytes_downloaded,
+        download_duration,
+        extract_duration,
+        total_duration: start.elapsed(),
+        downloaded,
+    })
 }
 
 async fn install_single(
@@ -511,123 +695,33 @@ async fn install_single(
     ctx.output
         .debug(&format!("Using bottle tag: {}", bottle_plan.tag));
 
-    let bottle_path = if let Some(cached) = ctx.cache.get_cached(&bottle_plan.file.sha256) {
-        ctx.output.debug("Using cached bottle");
-        cached
-    } else {
-        ctx.output.debug("Downloading bottle...");
-        let download_start = Instant::now();
-        let download_path = ctx.cache.blob_temp_path(&bottle_plan.file.sha256);
-        let final_path = ctx.cache.blob_path(&bottle_plan.file.sha256);
+    if !ctx.store.entry_exists(&bottle_plan.file.sha256) {
+        ctx.output.debug("Preparing bottle for store...");
+        let prepare_ctx = PrepareContext {
+            paths: ctx.paths,
+            cache: ctx.cache,
+            store: ctx.store,
+            ghcr: ctx.ghcr,
+        };
+        let prepare = prepare_bottle(&prepare_ctx, formula, &bottle_plan, name, version).await?;
 
-        if let Some(parent) = download_path.parent() {
-            std::fs::create_dir_all(parent)?;
+        if prepare.downloaded && prepare.bytes_downloaded > 0 {
+            ctx.output.debug(&format!(
+                "Downloaded {} {} ({}) in {}",
+                name,
+                version,
+                format_bytes(prepare.bytes_downloaded),
+                format_duration(prepare.download_duration.as_secs())
+            ));
         }
 
-        if download_path.exists() {
-            let _ = std::fs::remove_file(&download_path);
-        }
-
-        let pb = ctx
-            .output
-            .download_progress(0, &format!("Downloading {}", name));
-
-        ctx.ghcr
-            .download_bottle(
-                formula,
-                &bottle_plan.file,
-                &download_path,
-                |downloaded, total| {
-                    if total > 0 {
-                        pb.set_length(total);
-                    }
-                    pb.set_position(downloaded);
-                },
-            )
-            .await?;
-
-        pb.finish_and_clear();
-
-        std::fs::rename(&download_path, &final_path)?;
-        let size = final_path.metadata().map(|meta| meta.len()).unwrap_or(0);
-        ctx.cache.record_blob_metadata(
-            &bottle_plan.file.sha256,
-            Some(name),
-            Some(version),
-            Some(&bottle_plan.tag),
-            size,
-        )?;
-
-        ctx.output.debug(&format!(
-            "Downloaded {} in {}",
-            name,
-            format_duration(download_start.elapsed().as_secs())
-        ));
-
-        final_path
-    };
-
-    let mut store_entry = None;
-    for attempt in 1..=2 {
-        ctx.output.debug("Verifying checksum...");
-        if let Err(err) = verify::verify_bottle(&bottle_path, &bottle_plan.file.sha256, name) {
-            if attempt < 2 {
-                ctx.output
-                    .debug("Checksum mismatch, re-downloading bottle...");
-                ctx.cache.remove(&bottle_plan.file.sha256)?;
-                let download_path = ctx.cache.blob_temp_path(&bottle_plan.file.sha256);
-                if let Some(parent) = download_path.parent() {
-                    std::fs::create_dir_all(parent)?;
-                }
-                if download_path.exists() {
-                    let _ = std::fs::remove_file(&download_path);
-                }
-                ctx.ghcr
-                    .download_bottle(formula, &bottle_plan.file, &download_path, |_, _| {})
-                    .await?;
-                std::fs::rename(&download_path, &bottle_path)?;
-                let size = bottle_path.metadata().map(|meta| meta.len()).unwrap_or(0);
-                ctx.cache.record_blob_metadata(
-                    &bottle_plan.file.sha256,
-                    Some(name),
-                    Some(version),
-                    Some(&bottle_plan.tag),
-                    size,
-                )?;
-                continue;
-            }
-            return Err(err);
-        }
-
-        let store_start = Instant::now();
-        ctx.output.debug("Extracting to store...");
-        match ctx
-            .store
-            .ensure_entry(&bottle_plan.file.sha256, &bottle_path)
-        {
-            Ok(entry) => {
-                store_entry = Some(entry);
-                ctx.output.debug(&format!(
-                    "Store entry ready in {}",
-                    format_duration(store_start.elapsed().as_secs())
-                ));
-                break;
-            }
-            Err(err) => {
-                if attempt < 2 {
-                    ctx.output
-                        .debug("Store extraction failed, re-downloading bottle...");
-                    ctx.cache.remove(&bottle_plan.file.sha256)?;
-                    continue;
-                }
-                return Err(err);
-            }
+        if prepare.extract_duration > Duration::ZERO {
+            ctx.output.debug(&format!(
+                "Prepared store entry in {}",
+                format_duration(prepare.extract_duration.as_secs())
+            ));
         }
     }
-
-    let store_entry = store_entry.ok_or_else(|| {
-        ColdbrewError::ExtractionFailed("Failed to extract store entry".to_string())
-    })?;
 
     let materialize_start = Instant::now();
     ctx.output.debug("Materializing to cellar...");
@@ -642,7 +736,8 @@ async fn install_single(
 
     let db = Database::new(ctx.paths.clone());
     let conn = db.connect()?;
-    db.upsert_store_entry(&conn, &bottle_plan.file.sha256, store_entry.size_bytes)?;
+    let store_size = ctx.store.entry_size(&bottle_plan.file.sha256)?;
+    db.upsert_store_entry(&conn, &bottle_plan.file.sha256, store_size)?;
     db.add_store_ref(&conn, &bottle_plan.file.sha256, name, version)?;
 
     let mut installed = InstalledPackage::new(

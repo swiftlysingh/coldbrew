@@ -51,7 +51,9 @@ fn default_true() -> bool {
 }
 
 fn default_parallel() -> usize {
-    4
+    std::thread::available_parallelism()
+        .map(|count| count.get().max(2))
+        .unwrap_or(4)
 }
 
 fn default_keep_versions() -> usize {
