@@ -85,10 +85,7 @@ mod tests {
     fn test_resolve_install_spec_prefers_formula_name() {
         let temp = TempDir::new().unwrap();
         let paths = Paths::with_root(temp.path().to_path_buf());
-        write_formula_index(
-            &paths,
-            vec![formula("node@22", "22.1.0")],
-        );
+        write_formula_index(&paths, vec![formula("node@22", "22.1.0")]);
 
         let index = Index::new(paths);
         let (name, version) = resolve_install_spec("node@22", &index).unwrap();
