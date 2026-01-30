@@ -1,10 +1,12 @@
 //! Download cache management
 
 use crate::error::Result;
+use crate::storage::db::BlobCacheEntry;
 use crate::storage::paths::Paths;
+use crate::storage::Database;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Cache manager for downloaded bottles
 pub struct Cache {
@@ -19,23 +21,28 @@ impl Cache {
 
     /// Initialize the cache directory
     pub fn init(&self) -> Result<()> {
-        fs::create_dir_all(self.paths.downloads_dir())?;
+        fs::create_dir_all(self.paths.cache_blobs_dir())?;
         Ok(())
     }
 
-    /// Get the cache path for a bottle
-    pub fn bottle_path(&self, name: &str, version: &str, tag: &str) -> PathBuf {
-        self.paths.cache_bottle(name, version, tag)
+    /// Get the blob cache path for a bottle
+    pub fn blob_path(&self, sha256: &str) -> PathBuf {
+        self.paths.cache_blob(sha256)
     }
 
-    /// Check if a bottle is cached
-    pub fn is_cached(&self, name: &str, version: &str, tag: &str) -> bool {
-        self.bottle_path(name, version, tag).exists()
+    /// Get the temp path for an in-flight blob
+    pub fn blob_temp_path(&self, sha256: &str) -> PathBuf {
+        self.paths.cache_blob_temp(sha256)
     }
 
-    /// Get a cached bottle path if it exists
-    pub fn get_cached(&self, name: &str, version: &str, tag: &str) -> Option<PathBuf> {
-        let path = self.bottle_path(name, version, tag);
+    /// Check if a blob is cached
+    pub fn is_cached(&self, sha256: &str) -> bool {
+        self.blob_path(sha256).exists()
+    }
+
+    /// Get a cached blob path if it exists
+    pub fn get_cached(&self, sha256: &str) -> Option<PathBuf> {
+        let path = self.blob_path(sha256);
         if path.exists() {
             Some(path)
         } else {
@@ -43,100 +50,124 @@ impl Cache {
         }
     }
 
-    /// Store a bottle in the cache
-    pub fn store(&self, name: &str, version: &str, tag: &str, data: &[u8]) -> Result<PathBuf> {
+    /// Store a blob in the cache
+    pub fn store_blob(&self, sha256: &str, data: &[u8]) -> Result<PathBuf> {
         self.init()?;
-        let path = self.bottle_path(name, version, tag);
+        let path = self.blob_path(sha256);
         fs::write(&path, data)?;
         Ok(path)
     }
 
-    /// Move a downloaded file to the cache
-    pub fn move_to_cache(
-        &self,
-        src: &Path,
-        name: &str,
-        version: &str,
-        tag: &str,
-    ) -> Result<PathBuf> {
+    /// Move a downloaded file to the blob cache
+    pub fn move_to_cache(&self, src: &Path, sha256: &str) -> Result<PathBuf> {
         self.init()?;
-        let dest = self.bottle_path(name, version, tag);
+        let dest = self.blob_path(sha256);
         fs::rename(src, &dest)?;
         Ok(dest)
     }
 
-    /// Remove a cached bottle
-    pub fn remove(&self, name: &str, version: &str, tag: &str) -> Result<()> {
-        let path = self.bottle_path(name, version, tag);
+    pub fn record_blob_metadata(
+        &self,
+        sha256: &str,
+        name: Option<&str>,
+        version: Option<&str>,
+        tag: Option<&str>,
+        size_bytes: u64,
+    ) -> Result<()> {
+        let db = Database::new(self.paths.clone());
+        let conn = db.connect()?;
+        db.upsert_blob_cache(&conn, sha256, name, version, tag, size_bytes)?;
+        Ok(())
+    }
+
+    /// Remove a cached blob
+    pub fn remove(&self, sha256: &str) -> Result<()> {
+        let path = self.blob_path(sha256);
         if path.exists() {
             fs::remove_file(path)?;
         }
+
+        let db = Database::new(self.paths.clone());
+        let conn = db.connect()?;
+        db.delete_blob_cache(&conn, sha256)?;
         Ok(())
     }
 
     /// List all cached bottles
     pub fn list(&self) -> Result<Vec<CachedBottle>> {
-        let downloads_dir = self.paths.downloads_dir();
-        if !downloads_dir.exists() {
+        let blob_dir = self.paths.cache_blobs_dir();
+        if !blob_dir.exists() {
             return Ok(Vec::new());
         }
 
-        let mut bottles = Vec::new();
-        for entry in fs::read_dir(&downloads_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-
-            if let Some(bottle) = self.parse_bottle_filename(&path) {
-                bottles.push(bottle);
-            }
+        let db = Database::new(self.paths.clone());
+        let conn = db.connect()?;
+        let entries = db.list_blob_cache(&conn)?;
+        let mut bottles = self.materialize_cache_entries(&entries);
+        if bottles.is_empty() {
+            bottles = self.scan_blob_dir(&blob_dir)?;
         }
-
-        bottles.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(bottles)
     }
 
-    /// Parse a bottle filename into its components
-    fn parse_bottle_filename(&self, path: &Path) -> Option<CachedBottle> {
-        let filename = path.file_name()?.to_str()?;
-
-        // Format: name-version.tag.bottle.tar.gz
-        if !filename.ends_with(".bottle.tar.gz") {
-            return None;
+    fn materialize_cache_entries(&self, entries: &[BlobCacheEntry]) -> Vec<CachedBottle> {
+        let mut bottles = Vec::new();
+        for entry in entries {
+            let path = self.blob_path(&entry.sha256);
+            if !path.exists() {
+                continue;
+            }
+            let metadata = match path.metadata() {
+                Ok(metadata) => metadata,
+                Err(_) => continue,
+            };
+            let modified = match metadata.modified() {
+                Ok(modified) => modified,
+                Err(_) => continue,
+            };
+            bottles.push(CachedBottle {
+                sha256: entry.sha256.clone(),
+                name: entry.name.clone(),
+                version: entry.version.clone(),
+                tag: entry.tag.clone(),
+                path,
+                size: entry.size_bytes,
+                modified,
+            });
         }
 
-        let without_suffix = filename.strip_suffix(".bottle.tar.gz")?;
-        let parts: Vec<&str> = without_suffix.rsplitn(2, '.').collect();
+        bottles.sort_by_key(|bottle| bottle.label());
+        bottles
+    }
 
-        if parts.len() != 2 {
-            return None;
+    fn scan_blob_dir(&self, blob_dir: &Path) -> Result<Vec<CachedBottle>> {
+        let mut bottles = Vec::new();
+        for entry in fs::read_dir(blob_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if let Some(file_name) = path.file_name().and_then(|name| name.to_str()) {
+                if let Some(sha) = file_name.strip_suffix(".bottle.tar.gz") {
+                    let metadata = entry.metadata()?;
+                    bottles.push(CachedBottle {
+                        sha256: sha.to_string(),
+                        name: None,
+                        version: None,
+                        tag: None,
+                        path,
+                        size: metadata.len(),
+                        modified: metadata.modified().unwrap_or(UNIX_EPOCH),
+                    });
+                }
+            }
         }
-
-        let tag = parts[0];
-        let name_version = parts[1];
-
-        // Split name and version at the last hyphen
-        let hyphen_idx = name_version.rfind('-')?;
-        let name = &name_version[..hyphen_idx];
-        let version = &name_version[hyphen_idx + 1..];
-
-        let metadata = path.metadata().ok()?;
-        let size = metadata.len();
-        let modified = metadata.modified().ok()?;
-
-        Some(CachedBottle {
-            name: name.to_string(),
-            version: version.to_string(),
-            tag: tag.to_string(),
-            path: path.to_path_buf(),
-            size,
-            modified,
-        })
+        bottles.sort_by_key(|bottle| bottle.label());
+        Ok(bottles)
     }
 
     /// Clean up old cached files
     pub fn clean(&self, max_age: Option<Duration>) -> Result<CleanResult> {
-        let downloads_dir = self.paths.downloads_dir();
-        if !downloads_dir.exists() {
+        let blob_dir = self.paths.cache_blobs_dir();
+        if !blob_dir.exists() {
             return Ok(CleanResult::default());
         }
 
@@ -144,7 +175,9 @@ impl Cache {
         let mut removed = 0;
         let mut freed = 0;
 
-        for entry in fs::read_dir(&downloads_dir)? {
+        let db = Database::new(self.paths.clone());
+        let conn = db.connect()?;
+        for entry in fs::read_dir(&blob_dir)? {
             let entry = entry?;
             let path = entry.path();
             let metadata = entry.metadata()?;
@@ -161,6 +194,12 @@ impl Cache {
 
             if should_remove {
                 let size = metadata.len();
+                let file_name = path.file_name().and_then(|name| name.to_str());
+                if let Some(file_name) = file_name {
+                    if let Some(sha) = file_name.strip_suffix(".bottle.tar.gz") {
+                        db.delete_blob_cache(&conn, sha)?;
+                    }
+                }
                 fs::remove_file(&path)?;
                 removed += 1;
                 freed += size;
@@ -172,13 +211,13 @@ impl Cache {
 
     /// Get total cache size
     pub fn total_size(&self) -> Result<u64> {
-        let downloads_dir = self.paths.downloads_dir();
-        if !downloads_dir.exists() {
+        let blob_dir = self.paths.cache_blobs_dir();
+        if !blob_dir.exists() {
             return Ok(0);
         }
 
         let mut total = 0;
-        for entry in fs::read_dir(&downloads_dir)? {
+        for entry in fs::read_dir(&blob_dir)? {
             let entry = entry?;
             total += entry.metadata()?.len();
         }
@@ -190,12 +229,26 @@ impl Cache {
 /// Information about a cached bottle
 #[derive(Debug)]
 pub struct CachedBottle {
-    pub name: String,
-    pub version: String,
-    pub tag: String,
+    pub sha256: String,
+    pub name: Option<String>,
+    pub version: Option<String>,
+    pub tag: Option<String>,
     pub path: PathBuf,
     pub size: u64,
     pub modified: SystemTime,
+}
+
+impl CachedBottle {
+    pub fn label(&self) -> String {
+        if let (Some(name), Some(version), Some(tag)) =
+            (self.name.as_ref(), self.version.as_ref(), self.tag.as_ref())
+        {
+            format!("{} {} ({})", name, version, tag)
+        } else {
+            let short = self.sha256.chars().take(12).collect::<String>();
+            format!("blob {}", short)
+        }
+    }
 }
 
 /// Result of a cache clean operation
@@ -241,12 +294,12 @@ mod tests {
         let cache = Cache::new(paths);
 
         let data = b"test bottle data";
-        let path = cache.store("jq", "1.7.1", "arm64_sonoma", data).unwrap();
+        let path = cache.store_blob("abc123", data).unwrap();
 
         assert!(path.exists());
-        assert!(cache.is_cached("jq", "1.7.1", "arm64_sonoma"));
+        assert!(cache.is_cached("abc123"));
 
-        let cached_path = cache.get_cached("jq", "1.7.1", "arm64_sonoma").unwrap();
+        let cached_path = cache.get_cached("abc123").unwrap();
         let content = fs::read(&cached_path).unwrap();
         assert_eq!(content, data);
     }

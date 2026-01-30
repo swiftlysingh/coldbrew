@@ -2,11 +2,30 @@
 
 use crate::core::Formula;
 use crate::error::{ColdbrewError, Result};
+use reqwest::header::{ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};
 use reqwest::Client;
+use reqwest::StatusCode;
 use std::time::Duration;
 
-const FORMULA_INDEX_URL: &str = "https://formulae.brew.sh/api/formula.json";
+pub const FORMULA_INDEX_URL: &str = "https://formulae.brew.sh/api/formula.json";
 const FORMULA_URL: &str = "https://formulae.brew.sh/api/formula";
+
+#[derive(Debug, Clone)]
+pub struct CacheHeaders {
+    pub etag: Option<String>,
+    pub last_modified: Option<String>,
+}
+
+#[derive(Debug)]
+pub enum IndexFetchResult {
+    NotModified {
+        cache: CacheHeaders,
+    },
+    Updated {
+        formulas: Vec<Formula>,
+        cache: CacheHeaders,
+    },
+}
 
 /// Client for the Homebrew Formulae API
 pub struct HomebrewApi {
@@ -18,15 +37,39 @@ impl HomebrewApi {
     pub fn new() -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(60))
+            .connect_timeout(Duration::from_secs(10))
             .gzip(true)
+            .pool_max_idle_per_host(6)
+            .pool_idle_timeout(Duration::from_secs(60))
+            .http2_adaptive_window(true)
             .build()?;
 
         Ok(Self { client })
     }
 
     /// Fetch the complete formula index
-    pub async fn fetch_all_formulas(&self) -> Result<Vec<Formula>> {
-        let response = self.client.get(FORMULA_INDEX_URL).send().await?;
+    pub async fn fetch_all_formulas(
+        &self,
+        cache: Option<&CacheHeaders>,
+    ) -> Result<IndexFetchResult> {
+        let mut request = self.client.get(FORMULA_INDEX_URL);
+        if let Some(cache) = cache {
+            if let Some(ref etag) = cache.etag {
+                request = request.header(IF_NONE_MATCH, etag);
+            }
+            if let Some(ref last_modified) = cache.last_modified {
+                request = request.header(IF_MODIFIED_SINCE, last_modified);
+            }
+        }
+
+        let response = request.send().await?;
+        let cache_headers = cache_headers_from_response(&response, cache);
+
+        if response.status() == StatusCode::NOT_MODIFIED {
+            return Ok(IndexFetchResult::NotModified {
+                cache: cache_headers,
+            });
+        }
 
         if !response.status().is_success() {
             return Err(ColdbrewError::DownloadFailed(format!(
@@ -36,7 +79,10 @@ impl HomebrewApi {
         }
 
         let formulas: Vec<Formula> = response.json().await?;
-        Ok(formulas)
+        Ok(IndexFetchResult::Updated {
+            formulas,
+            cache: cache_headers,
+        })
     }
 
     /// Fetch a single formula by name
@@ -77,6 +123,37 @@ impl Default for HomebrewApi {
     fn default() -> Self {
         Self::new().expect("Failed to create HTTP client")
     }
+}
+
+fn cache_headers_from_response(
+    response: &reqwest::Response,
+    fallback: Option<&CacheHeaders>,
+) -> CacheHeaders {
+    let etag = response
+        .headers()
+        .get(ETAG)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_string());
+    let last_modified = response
+        .headers()
+        .get(LAST_MODIFIED)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.to_string());
+
+    let mut headers = CacheHeaders {
+        etag,
+        last_modified,
+    };
+    if let Some(fallback) = fallback {
+        if headers.etag.is_none() {
+            headers.etag = fallback.etag.clone();
+        }
+        if headers.last_modified.is_none() {
+            headers.last_modified = fallback.last_modified.clone();
+        }
+    }
+
+    headers
 }
 
 #[cfg(test)]

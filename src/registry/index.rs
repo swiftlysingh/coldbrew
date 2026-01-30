@@ -2,8 +2,9 @@
 
 use crate::core::Formula;
 use crate::error::{ColdbrewError, Result};
+use crate::registry::homebrew_api::{CacheHeaders, IndexFetchResult, FORMULA_INDEX_URL};
 use crate::registry::HomebrewApi;
-use crate::storage::Paths;
+use crate::storage::{Database, Paths};
 use std::collections::HashMap;
 use std::fs;
 
@@ -25,24 +26,51 @@ impl Index {
     /// Update the index from the Homebrew API
     pub async fn update(&mut self) -> Result<usize> {
         let api = HomebrewApi::new()?;
-        let formulas = api.fetch_all_formulas().await?;
-        let count = formulas.len();
+        let db = Database::new(self.paths.clone());
+        let conn = db.connect()?;
 
-        // Save to disk
         let index_path = self.paths.formula_index();
-        if let Some(parent) = index_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
+        let cache_entry = if index_path.exists() {
+            db.get_api_cache(&conn, FORMULA_INDEX_URL)?
+        } else {
+            None
+        };
+        let cache_headers = cache_entry.as_ref().map(|entry| CacheHeaders {
+            etag: entry.etag.clone(),
+            last_modified: entry.last_modified.clone(),
+        });
 
-        let json = serde_json::to_string(&formulas)?;
-        fs::write(&index_path, json)?;
+        let fetch = api.fetch_all_formulas(cache_headers.as_ref()).await?;
+        let (count, cache_update) = match fetch {
+            IndexFetchResult::Updated { formulas, cache } => {
+                if let Some(parent) = index_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
 
-        // Update in-memory cache
-        let mut map = HashMap::new();
-        for formula in formulas {
-            map.insert(formula.name.clone(), formula);
-        }
-        self.formulas = Some(map);
+                let json = serde_json::to_string(&formulas)?;
+                fs::write(&index_path, json)?;
+
+                let mut map = HashMap::new();
+                for formula in formulas {
+                    map.insert(formula.name.clone(), formula);
+                }
+                let count = map.len();
+                self.formulas = Some(map);
+                (count, cache)
+            }
+            IndexFetchResult::NotModified { cache } => {
+                self.load()?;
+                let count = self.formulas.as_ref().map(|map| map.len()).unwrap_or(0);
+                (count, cache)
+            }
+        };
+
+        db.upsert_api_cache(
+            &conn,
+            FORMULA_INDEX_URL,
+            cache_update.etag.as_deref(),
+            cache_update.last_modified.as_deref(),
+        )?;
 
         Ok(count)
     }
