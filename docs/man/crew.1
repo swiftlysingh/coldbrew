@@ -101,13 +101,6 @@ Unpin a package to allow upgrades.
 .B crew default <package>
 .br
 Set or show the default version for a package (e.g., node@22 or node).
-.SS deps
-.B crew deps [OPTIONS] <package>
-.br
-Show dependencies for a package.
-.TP
-.B \-t, \-\-tree
-Show dependencies as a tree.
 .SS dependents
 .B crew dependents <package>
 .br
@@ -123,16 +116,6 @@ Force overwrite if file exists.
 .B crew lock
 .br
 Generate a lockfile from coldbrew.toml.
-.SS migrate
-.B crew migrate [OPTIONS]
-.br
-Migrate Homebrew-installed formulas to Coldbrew.
-.TP
-.B \-\-brew <path>
-Path to Homebrew brew binary.
-.TP
-.B \-\-dry-run
-Show what would be migrated without making changes.
 .SS tap
 .B crew tap [OPTIONS] [user/repo]
 .br
@@ -140,22 +123,13 @@ Add or remove taps (third-party repositories).
 .TP
 .B \-r, \-\-remove
 Remove a tap instead of adding.
-.SS cache
-.B crew cache <command>
+.SS space
+.B crew space [OPTIONS]
 .br
-Manage the download cache.
+Show disk usage and cleanup candidates.
 .TP
-.B crew cache list
-List cached downloads.
-.TP
-.B crew cache clean [\-\-all]
-Remove cached downloads.
-.TP
-.B \-a, \-\-all
-Remove all cached files.
-.TP
-.B crew cache info
-Show cache location and size.
+.B \-d, \-\-details
+Show itemized details.
 .SS clean
 .B crew clean [OPTIONS]
 .br
@@ -177,10 +151,6 @@ Force overwrite existing files.
 .B crew unlink <package>
 .br
 Remove links for a package.
-.SS shell
-.B crew shell [shell]
-.br
-Set up shell integration (bash, zsh, fish).
 .SS doctor
 .B crew doctor
 .br
@@ -190,7 +160,7 @@ Check system for potential problems.
 .br
 Generate shell completion scripts.
 .P
-Supported shells: bash, zsh, fish, elvish, powershell, nushell.
+Supported shells: bash, zsh, fish, elvish, powershell.
 .SH FILES
 .TP
 .B ~/.coldbrew/
