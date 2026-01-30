@@ -12,7 +12,6 @@ pub mod list;
 pub mod lock;
 pub mod pin;
 pub mod search;
-pub mod shell;
 pub mod space;
 pub mod tap;
 pub mod uninstall;

@@ -184,12 +184,6 @@ pub enum Commands {
         package: String,
     },
 
-    /// Set up shell integration
-    Shell {
-        /// Shell to configure (bash, zsh, fish)
-        shell: Option<String>,
-    },
-
     /// Check system for potential problems
     Doctor,
 

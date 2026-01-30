@@ -82,7 +82,7 @@ fn hint_path(paths: &Paths, installed: &crate::core::package::InstalledPackage, 
     let path_var = env::var("PATH").unwrap_or_default();
     if !path_includes_dir(&path_var, &bin_dir) {
         output.hint(&format!(
-            "Add {} to your PATH. Run 'crew shell' for instructions",
+            "Add {} to your PATH to use installed binaries",
             bin_dir.display()
         ));
     }
