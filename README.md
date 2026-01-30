@@ -90,6 +90,18 @@ crew install # Install from lockfile
 | `clean [--all] [--dry-run]` | Interactive cleanup |
 | `doctor` | Check for problems |
 
+## Man Page
+
+The repository includes a manual page at `docs/man/crew.1`.
+
+Install it locally:
+
+```bash
+mkdir -p ~/.local/share/man/man1
+cp docs/man/crew.1 ~/.local/share/man/man1/
+man crew
+```
+
 ## Development
 
 Enable the repository hooks (run once per clone):

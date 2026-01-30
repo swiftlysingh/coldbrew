@@ -1,0 +1,206 @@
+.TH CREW 1 "January 2026" "coldbrew 0.1.0" "User Commands"
+.SH NAME
+crew \- Homebrew-compatible package manager
+.SH SYNOPSIS
+.B crew
+.RI [ OPTIONS ] " [COMMAND]"
+.br
+.B crew
+.RI [ OPTIONS ] " help " [COMMAND]
+.br
+.B crew
+.RI [ OPTIONS ] " completions " SHELL
+.SH DESCRIPTION
+Coldbrew is a Homebrew-compatible package manager written in Rust. It installs
+prebuilt bottles, manages multiple versions side-by-side, and uses a shim-based
+workflow to select versions based on project configuration.
+.P
+If no command is provided, crew prints the help text.
+.SH OPTIONS
+.TP
+.B \-v, \-\-verbose
+Enable verbose output.
+.TP
+.B \-q, \-\-quiet
+Suppress non-error output.
+.TP
+.B \-h, \-\-help
+Print help information.
+.TP
+.B \-V, \-\-version
+Print version information.
+.SH COMMANDS
+.SS update
+.B crew update
+.br
+Update the package index from Homebrew.
+.SS search
+.B crew search <query> [\-\-extended]
+.br
+Search for packages.
+.TP
+.B \-e, \-\-extended
+Show extended information.
+.SS info
+.B crew info <package> [\-\-format <text|json>]
+.br
+Show information about a package.
+.TP
+.B \-f, \-\-format <text|json>
+Output format (default: text).
+.SS install
+.B crew install [OPTIONS] <packages>...
+.br
+Install one or more packages (e.g., jq, node@22).
+.TP
+.B \-\-skip-deps
+Skip dependency installation.
+.TP
+.B \-f, \-\-force
+Force reinstall even if already installed.
+.SS uninstall
+.B crew uninstall [OPTIONS] <packages>...
+.br
+Uninstall one or more packages.
+.TP
+.B \-a, \-\-all
+Remove all versions.
+.TP
+.B \-\-with-deps
+Also remove unused dependencies.
+.SS upgrade
+.B crew upgrade [OPTIONS] [packages]...
+.br
+Upgrade installed packages (all if not specified).
+.TP
+.B \-y, \-\-yes
+Skip interactive selection.
+.SS list
+.B crew list [OPTIONS]
+.br
+List installed packages.
+.TP
+.B \-n, \-\-names-only
+Show only package names.
+.TP
+.B \-v, \-\-versions <package>
+Show versions for a specific package.
+.SS which
+.B crew which <binary>
+.br
+Show which package provides a binary.
+.SS pin
+.B crew pin <package>
+.br
+Pin a package to prevent upgrades.
+.SS unpin
+.B crew unpin <package>
+.br
+Unpin a package to allow upgrades.
+.SS default
+.B crew default <package>
+.br
+Set or show the default version for a package (e.g., node@22 or node).
+.SS dependents
+.B crew dependents <package>
+.br
+Show packages that depend on a package.
+.SS init
+.B crew init [\-\-force]
+.br
+Initialize a new coldbrew.toml in the current directory.
+.TP
+.B \-f, \-\-force
+Force overwrite if file exists.
+.SS lock
+.B crew lock
+.br
+Generate a lockfile from coldbrew.toml.
+.SS tap
+.B crew tap [OPTIONS] [user/repo]
+.br
+Add or remove taps (third-party repositories).
+.TP
+.B \-r, \-\-remove
+Remove a tap instead of adding.
+.SS space
+.B crew space [OPTIONS]
+.br
+Show disk usage and cleanup candidates.
+.TP
+.B \-d, \-\-details
+Show itemized details.
+.SS clean
+.B crew clean [OPTIONS]
+.br
+Cleanup old versions, cache, and other unused data.
+.TP
+.B \-a, \-\-all
+Clean everything without prompts.
+.TP
+.B \-d, \-\-dry-run
+Show what would be removed without deleting.
+.SS link
+.B crew link [OPTIONS] <package>
+.br
+Force-link a keg-only package.
+.TP
+.B \-f, \-\-force
+Force overwrite existing files.
+.SS unlink
+.B crew unlink <package>
+.br
+Remove links for a package.
+.SS doctor
+.B crew doctor
+.br
+Check system for potential problems.
+.SS completions
+.B crew completions <shell>
+.br
+Generate shell completion scripts.
+.P
+Supported shells: bash, zsh, fish, elvish, powershell.
+.SH FILES
+.TP
+.B ~/.coldbrew/
+Coldbrew root directory.
+.TP
+.B ~/.coldbrew/config.toml
+Global configuration file.
+.TP
+.B coldbrew.toml
+Project configuration file in the current directory or a parent.
+.TP
+.B coldbrew.lock
+Project lockfile generated from coldbrew.toml.
+.SH EXAMPLES
+.TP
+Update the package index:
+.br
+.B crew update
+.TP
+Install jq:
+.br
+.B crew install jq
+.TP
+Pin a package:
+.br
+.B crew pin node
+.TP
+Generate a lockfile:
+.br
+.B crew lock
+.TP
+Generate completions for zsh:
+.br
+.B crew completions zsh
+.SH EXIT STATUS
+.TP
+.B 0
+Success.
+.TP
+.B 1
+An error occurred.
+.SH SEE ALSO
+.BR brew (1)
