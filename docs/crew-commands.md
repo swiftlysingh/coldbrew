@@ -22,8 +22,7 @@ Commands:
   init         Initialize a new coldbrew.toml in the current directory
   lock         Generate a lockfile from coldbrew.toml
   tap          Add or remove taps (third-party repositories)
-  space        Show disk usage and cleanup candidates
-  clean        Cleanup old versions, cache, and other unused data
+  space        Disk usage and cleanup commands
   link         Force-link a keg-only package
   unlink       Remove links for a package
   doctor       Check system for potential problems
@@ -278,9 +277,26 @@ Options:
 
 ## space
 ```
+Disk usage and cleanup commands
+
+Usage: crew space [COMMAND]
+
+Commands:
+  show   Show disk usage and cleanup candidates
+  clean  Cleanup old versions, cache, and other unused data
+
+Options:
+  -v, --verbose  Enable verbose output
+  -q, --quiet    Suppress non-error output
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
+## space show
+```
 Show disk usage and cleanup candidates
 
-Usage: crew space [OPTIONS]
+Usage: crew space show [OPTIONS]
 
 Options:
   -d, --details  Show itemized details
@@ -290,11 +306,11 @@ Options:
   -V, --version  Print version
 ```
 
-## clean
+## space clean
 ```
 Cleanup old versions, cache, and other unused data
 
-Usage: crew clean [OPTIONS]
+Usage: crew space clean [OPTIONS]
 
 Options:
   -a, --all      Clean everything without prompts
@@ -389,8 +405,7 @@ Commands:
   init         Initialize a new coldbrew.toml in the current directory
   lock         Generate a lockfile from coldbrew.toml
   tap          Add or remove taps (third-party repositories)
-  space        Show disk usage and cleanup candidates
-  clean        Cleanup old versions, cache, and other unused data
+  space        Disk usage and cleanup commands
   link         Force-link a keg-only package
   unlink       Remove links for a package
   doctor       Check system for potential problems
