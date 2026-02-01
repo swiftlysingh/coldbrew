@@ -103,6 +103,7 @@ crew migrate
 Notes:
 - Homebrew casks are not supported and will be skipped with a warning.
 - Only Homebrew core formulas are migrated.
+- After a successful migrate, crew prompts to remove matching Homebrew formulas in interactive sessions; non-interactive runs skip cleanup with a warning.
 
 ## Shell Integration
 
