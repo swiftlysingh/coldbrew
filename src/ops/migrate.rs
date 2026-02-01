@@ -23,14 +23,26 @@ pub struct MigrationFailure {
 }
 
 #[derive(Debug, Clone)]
+pub struct MigratedFormula {
+    pub name: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct MigrationSummary {
     pub requested: usize,
-    pub migrated: Vec<String>,
+    pub migrated: Vec<MigratedFormula>,
     pub skipped: Vec<MigrationSkip>,
     pub failed: Vec<MigrationFailure>,
     pub casks: Vec<String>,
     pub warnings: Vec<String>,
     pub dry_run: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct MigrationCleanupSummary {
+    pub removed: Vec<String>,
+    pub failed: Vec<MigrationFailure>,
 }
 
 impl MigrationSummary {
@@ -43,6 +55,15 @@ impl MigrationSummary {
             casks: Vec::new(),
             warnings: Vec::new(),
             dry_run,
+        }
+    }
+}
+
+impl MigrationCleanupSummary {
+    fn new() -> Self {
+        Self {
+            removed: Vec::new(),
+            failed: Vec::new(),
         }
     }
 }
@@ -132,9 +153,10 @@ pub async fn migrate(
                 Output::package_name(&name),
                 Output::version(installed_version)
             ));
-            summary
-                .migrated
-                .push(format!("{} {}", name, installed_version));
+            summary.migrated.push(MigratedFormula {
+                name: name.clone(),
+                version: installed_version.to_string(),
+            });
             continue;
         }
 
@@ -148,9 +170,10 @@ pub async fn migrate(
             .await
         {
             Ok(_) => {
-                summary
-                    .migrated
-                    .push(format!("{} {}", name, installed_version));
+                summary.migrated.push(MigratedFormula {
+                    name: name.clone(),
+                    version: installed_version.to_string(),
+                });
             }
             Err(e) => {
                 summary.failed.push(MigrationFailure {
@@ -158,6 +181,36 @@ pub async fn migrate(
                     error: e.to_string(),
                 });
             }
+        }
+    }
+
+    Ok(summary)
+}
+
+pub async fn cleanup_brew_installs(
+    brew_override: Option<&str>,
+    migrated: &[MigratedFormula],
+    output: &Output,
+) -> Result<MigrationCleanupSummary> {
+    if migrated.is_empty() {
+        return Ok(MigrationCleanupSummary::new());
+    }
+
+    let brew = detect_brew(brew_override)?;
+    let mut summary = MigrationCleanupSummary::new();
+
+    for formula in migrated {
+        output.info(&format!(
+            "Removing Homebrew {}",
+            Output::package_name(&formula.name)
+        ));
+
+        match run_brew(&brew, &["uninstall", "--formula", &formula.name]).await {
+            Ok(_) => summary.removed.push(formula.name.clone()),
+            Err(e) => summary.failed.push(MigrationFailure {
+                name: formula.name.clone(),
+                error: e.to_string(),
+            }),
         }
     }
 
