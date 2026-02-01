@@ -3,8 +3,10 @@
 use crate::cli::output::Output;
 use crate::error::Result;
 use crate::ops;
-use crate::ops::migrate::{MigrationFailure, MigrationSkip};
+use crate::ops::migrate::{MigratedFormula, MigrationFailure, MigrationSkip};
 use crate::storage::Paths;
+use dialoguer::Confirm;
+use std::io::IsTerminal;
 
 /// Execute the migrate command
 pub async fn execute(brew: Option<&str>, dry_run: bool, output: &Output) -> Result<()> {
@@ -59,6 +61,49 @@ pub async fn execute(brew: Option<&str>, dry_run: bool, output: &Output) -> Resu
         }
     }
 
+    if !summary.dry_run && !summary.migrated.is_empty() {
+        if can_prompt() {
+            output.section("Homebrew cleanup");
+            output.info(&format!(
+                "Migrated formulas: {}",
+                format_migrated_list(&summary.migrated, 10)
+            ));
+
+            let proceed = Confirm::new()
+                .with_prompt("Remove these Homebrew installs?")
+                .default(false)
+                .interact()?;
+
+            if proceed {
+                match ops::migrate::cleanup_brew_installs(brew, &summary.migrated, output).await {
+                    Ok(cleanup) => {
+                        output.success(&format!(
+                            "Homebrew cleanup complete: removed {}, {} failed",
+                            cleanup.removed.len(),
+                            cleanup.failed.len()
+                        ));
+
+                        if !cleanup.failed.is_empty() {
+                            output.section("Failed removals");
+                            for MigrationFailure { name, error } in &cleanup.failed {
+                                output.list_item(name, Some(error));
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        output.warning(&format!("Failed to uninstall Homebrew formulas: {}", err));
+                    }
+                }
+            } else {
+                output.info("Skipping Homebrew cleanup");
+            }
+        } else {
+            output.warning("Skipping Homebrew cleanup prompt (non-interactive session).");
+            output
+                .hint("Re-run `crew migrate` in an interactive shell to remove Homebrew installs.");
+        }
+    }
+
     Ok(())
 }
 
@@ -69,4 +114,22 @@ fn format_list(items: &[String], limit: usize) -> String {
 
     let shown = items[..limit].join(", ");
     format!("{} and {} more", shown, items.len() - limit)
+}
+
+fn format_migrated_list(items: &[MigratedFormula], limit: usize) -> String {
+    let shown: Vec<String> = items
+        .iter()
+        .take(limit)
+        .map(|item| format!("{} {}", item.name, item.version))
+        .collect();
+
+    if items.len() <= limit {
+        return shown.join(", ");
+    }
+
+    format!("{} and {} more", shown.join(", "), items.len() - limit)
+}
+
+fn can_prompt() -> bool {
+    std::io::stdin().is_terminal() && std::io::stdout().is_terminal()
 }
