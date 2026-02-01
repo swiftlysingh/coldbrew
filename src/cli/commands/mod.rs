@@ -14,7 +14,6 @@ pub mod migrate;
 pub mod pin;
 pub mod search;
 pub mod space;
-pub mod shell;
 pub mod spec;
 pub mod tap;
 pub mod uninstall;
