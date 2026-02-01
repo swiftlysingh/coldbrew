@@ -58,6 +58,17 @@ Skip dependency installation.
 .TP
 .B \-f, \-\-force
 Force reinstall even if already installed.
+.SS migrate
+.B crew migrate [OPTIONS]
+.br
+Migrate Homebrew-installed formulas into Coldbrew. After a successful migration,
+crew prompts to remove matching Homebrew installs in interactive sessions.
+.TP
+.B \-\-brew <path>
+Path to the Homebrew brew binary.
+.TP
+.B \-\-dry-run
+Show what would be migrated without installing.
 .SS uninstall
 .B crew uninstall [OPTIONS] <packages>...
 .br

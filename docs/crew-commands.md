@@ -11,6 +11,7 @@ Commands:
   search       Search for packages
   info         Show information about a package
   install      Install packages
+  migrate      Migrate Homebrew-installed formulas
   uninstall    Uninstall packages
   upgrade      Upgrade installed packages
   list         List installed packages
@@ -101,6 +102,23 @@ Options:
   -h, --help       Print help
   -V, --version    Print version
 ```
+
+## migrate
+```
+Migrate Homebrew-installed formulas
+
+Usage: crew migrate [OPTIONS]
+
+Options:
+      --brew <BREW>  Path to Homebrew brew binary
+      --dry-run      Show what would be migrated
+  -v, --verbose      Enable verbose output
+  -q, --quiet        Suppress non-error output
+  -h, --help         Print help
+  -V, --version      Print version
+```
+
+Interactive runs prompt to remove migrated Homebrew formulas after success; non-interactive sessions skip cleanup with a warning.
 
 ## uninstall
 ```
