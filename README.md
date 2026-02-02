@@ -84,7 +84,7 @@ crew install # Install from lockfile
 | `lock` | Generate lockfile |
 | `tap <user/repo>` | Add third-party repository |
 | `space` | Show disk usage and cleanup candidates |
-| `clean [--all] [--dry-run]` | Interactive cleanup |
+| `space clean [--all] [--dry-run]` | Interactive cleanup |
 | `doctor` | Check for problems |
 
 ## Man Page
