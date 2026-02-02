@@ -2,8 +2,11 @@
 
 use crate::cli::output::Output;
 use crate::core::package::{InstalledPackage, PackageMetadata, RuntimeDependency};
+use crate::core::platform::Os;
+use crate::core::version::{version_matches, Version};
 use crate::core::{DependencyResolver, Formula, Platform};
 use crate::error::{ColdbrewError, Result};
+use crate::ops::relocate;
 use crate::ops::verify;
 use crate::registry::{GhcrClient, Index};
 use crate::storage::{Cache, Cellar, Paths, ShimManager};
@@ -101,15 +104,18 @@ pub async fn install(
         }
 
         let target_version = if is_root {
-            version.unwrap_or(&formula.versions.stable)
+            match version {
+                Some(requested) => resolve_requested_version(&pkg_name, requested, formula)?,
+                None => formula.version_with_revision(),
+            }
         } else {
-            &formula.versions.stable
+            formula.version_with_revision()
         };
 
-        if is_root && cellar.is_installed(&pkg_name, target_version) && !force {
+        if is_root && cellar.is_installed(&pkg_name, &target_version) && !force {
             return Err(ColdbrewError::PackageAlreadyInstalled {
                 name: pkg_name.clone(),
-                version: target_version.to_string(),
+                version: target_version.clone(),
             });
         }
 
@@ -127,7 +133,7 @@ pub async fn install(
         let installed = install_single(
             &ctx,
             &pkg_name,
-            target_version,
+            &target_version,
             formula,
             runtime_deps,
             options,
@@ -201,6 +207,37 @@ fn resolve_runtime_deps(
     Ok(runtime_deps)
 }
 
+fn resolve_requested_version(name: &str, requested: &str, formula: &Formula) -> Result<String> {
+    let resolved = formula.version_with_revision();
+
+    if requested == resolved {
+        return Ok(resolved);
+    }
+
+    if requested == formula.versions.stable {
+        return Ok(resolved);
+    }
+
+    match Version::parse(&resolved) {
+        Ok(resolved_version) => {
+            if version_matches(&resolved_version, requested) {
+                Ok(resolved)
+            } else {
+                Err(ColdbrewError::VersionNotAvailable {
+                    name: name.to_string(),
+                    requested: requested.to_string(),
+                    available: resolved,
+                })
+            }
+        }
+        Err(_) => Err(ColdbrewError::VersionNotAvailable {
+            name: name.to_string(),
+            requested: requested.to_string(),
+            available: resolved,
+        }),
+    }
+}
+
 async fn install_single(
     ctx: &InstallContext<'_>,
     name: &str,
@@ -265,6 +302,25 @@ async fn install_single(
 
     ctx.output.debug("Extracting to cellar...");
     let install_path = ctx.cellar.install(name, version, &bottle_path)?;
+
+    if ctx.platform.os == Os::MacOS {
+        ctx.output.debug("Relocating bottle...");
+        let summary =
+            relocate::relocate_bottle(&install_path, ctx.paths, ctx.platform, ctx.output)?;
+        if summary.relocated_files > 0 {
+            ctx.output.debug(&format!(
+                "Relocated {} Mach-O files",
+                summary.relocated_files
+            ));
+        }
+
+        ctx.output.debug("Codesigning Mach-O files...");
+        let signed = relocate::codesign_macho_tree(&install_path, ctx.platform, ctx.output)?;
+        if signed > 0 {
+            ctx.output
+                .debug(&format!("Codesigned {} Mach-O files", signed));
+        }
+    }
 
     let mut installed = InstalledPackage::new(
         name.to_string(),
