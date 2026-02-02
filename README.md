@@ -17,17 +17,14 @@ A Homebrew-compatible package manager in Rust - user-controlled, fast, and repro
 
 ## Installation
 
-```bash
-cargo install coldbrew
-```
-
-Or build from source:
+Coldbrew is not published on crates.io yet. Install from source:
 
 ```bash
 git clone https://github.com/swiftlysingh/coldbrew
 cd coldbrew
-cargo build --release
+cargo install --path .
 ```
+
 
 ## Quick Start
 
