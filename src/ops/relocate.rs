@@ -4,7 +4,6 @@ use crate::cli::output::Output;
 use crate::core::platform::{Os, Platform};
 use crate::error::{ColdbrewError, Result};
 use crate::storage::Paths;
-use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -145,20 +144,16 @@ pub fn codesign_macho_tree(
 
 fn relocate_macho_file(path: &Path, replacements: &[Replacement]) -> Result<RelocateOutcome> {
     let load_commands = otool_load_commands(path)?;
-    let mut rpath_changes: BTreeSet<(String, String)> = BTreeSet::new();
-    let mut dylib_changes: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut rpath_changes = Vec::new();
+    let mut dylib_changes = Vec::new();
     let mut id_change: Option<String> = None;
 
     for command in load_commands {
         if let Some(replaced) = replace_placeholders(&command.value, replacements) {
             match command.kind {
-                LoadCommandKind::Rpath => {
-                    rpath_changes.insert((command.value, replaced));
-                }
+                LoadCommandKind::Rpath => rpath_changes.push((command.value, replaced)),
                 LoadCommandKind::IdDylib => id_change = Some(replaced),
-                LoadCommandKind::LoadDylib => {
-                    dylib_changes.insert((command.value, replaced));
-                }
+                LoadCommandKind::LoadDylib => dylib_changes.push((command.value, replaced)),
             }
         }
     }
