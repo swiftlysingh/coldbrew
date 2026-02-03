@@ -93,6 +93,21 @@ impl Output {
         pb
     }
 
+    /// Create a progress bar for installs
+    pub fn install_progress(&self, total: u64, message: &str) -> Option<ProgressBar> {
+        if self.quiet || total == 0 {
+            return None;
+        }
+        let pb = ProgressBar::new(total);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{msg} [{bar:40.cyan/blue}] {pos}/{len}")
+                .unwrap(),
+        );
+        pb.set_message(message.to_string());
+        Some(pb)
+    }
+
     /// Create a spinner for indeterminate progress
     pub fn spinner(&self, message: &str) -> ProgressBar {
         let pb = ProgressBar::new_spinner();

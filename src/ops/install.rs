@@ -270,6 +270,11 @@ async fn install_with_policy(
     }
 
     let mut deps_remaining: HashMap<String, usize> = HashMap::new();
+    let install_progress = if install_plans.len() > 1 && !config.settings.per_bottle_progress {
+        output.install_progress(install_plans.len() as u64, "Installing packages")
+    } else {
+        None
+    };
     let mut dependents: HashMap<String, Vec<String>> = HashMap::new();
     for (pkg_name, plan) in &install_plans {
         let mut count = 0;
@@ -317,6 +322,7 @@ async fn install_with_policy(
                     .await?;
             }
             let ctx = &ctx;
+            let install_progress = install_progress.clone();
             futures.push(Box::pin(async move {
                 let _permit = permit;
                 let options = InstallOptions {
@@ -334,6 +340,9 @@ async fn install_with_policy(
                     options,
                 )
                 .await?;
+                if let Some(bar) = install_progress.as_ref() {
+                    bar.inc(1);
+                }
                 Ok((plan.name, installed))
             }));
         }
@@ -359,6 +368,9 @@ async fn install_with_policy(
 
     if let Some(manager) = download_manager.as_mut() {
         manager.wait_for_all(output).await?;
+    }
+    if let Some(bar) = install_progress.as_ref() {
+        bar.finish_and_clear();
     }
 
     if let Ok(metrics) = ctx.metrics.lock() {
