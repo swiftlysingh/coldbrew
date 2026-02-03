@@ -822,6 +822,7 @@ fn plan_download_groups(
     Ok(groups.into_values().collect())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn download_group(
     paths: &Paths,
     ghcr: &GhcrClient,
@@ -867,6 +868,7 @@ async fn download_group(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn prepare_bottle(
     ctx: &PrepareContext<'_>,
     formula: &Formula,
