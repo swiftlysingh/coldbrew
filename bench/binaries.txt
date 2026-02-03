@@ -1,0 +1,19 @@
+# Formula to binary mapping used for optional verification.
+# Format: <formula>:<binary>
+
+jq:jq
+tree:tree
+fd:fd
+ripgrep:rg
+wget:wget
+git:git
+cmake:cmake
+node:node
+sqlite:sqlite3
+bat:bat
+fzf:fzf
+neovim:nvim
+htop:htop
+xz:xz
+gettext:gettext
+zstd:zstd

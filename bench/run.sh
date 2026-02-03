@@ -11,6 +11,11 @@ WARMUP="${WARMUP:-1}"
 FORMULA_COUNT="${FORMULA_COUNT:-10}"
 SEARCH_TERM="${SEARCH_TERM:-python}"
 ALLOW_INSTALLED="${ALLOW_INSTALLED:-0}"
+ALLOW_DESTRUCTIVE="${ALLOW_DESTRUCTIVE:-0}"
+VERIFY_INSTALL="${VERIFY_INSTALL:-1}"
+VERIFY_BINARIES="${VERIFY_BINARIES:-1}"
+VERIFY_BINARIES_STRICT="${VERIFY_BINARIES_STRICT:-0}"
+BINARIES_FILE="${BINARIES_FILE:-$BENCH_DIR/binaries.txt}"
 
 CREW_BIN="${CREW_BIN:-$ROOT_DIR/target/release/crew}"
 BREW_BIN="${BREW_BIN:-brew}"
@@ -57,6 +62,77 @@ json_escape() {
   printf '%s' "$value"
 }
 
+resolve_path() {
+  local target="$1"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$target" <<'PY'
+import os
+import sys
+print(os.path.abspath(os.path.realpath(sys.argv[1])))
+PY
+    return 0
+  fi
+  if command -v realpath >/dev/null 2>&1; then
+    realpath "$target"
+    return 0
+  fi
+  if [ -d "$target" ]; then
+    (cd "$target" && pwd -P)
+    return 0
+  fi
+  local parent
+  parent="$(dirname "$target")"
+  local base
+  base="$(basename "$target")"
+  if [ -d "$parent" ]; then
+    (cd "$parent" && printf '%s/%s' "$(pwd -P)" "$base")
+    return 0
+  fi
+  printf '%s' "$target"
+}
+
+ensure_safe_path() {
+  local path="$1"
+  local label="$2"
+  local resolved
+  local state_resolved
+  resolved="$(resolve_path "$path")"
+  state_resolved="$(resolve_path "$STATE_ROOT")"
+
+  case "$resolved" in
+    "$state_resolved" | "$state_resolved"/*)
+      return 0
+      ;;
+  esac
+
+  if [ "$ALLOW_DESTRUCTIVE" -ne 1 ]; then
+    die "$label must be under $STATE_ROOT (set ALLOW_DESTRUCTIVE=1 to override)"
+  fi
+
+  echo "warning: $label is outside $STATE_ROOT; ALLOW_DESTRUCTIVE=1 set, continuing" >&2
+}
+
+lookup_binary() {
+  local formula="$1"
+  [ -f "$BINARIES_FILE" ] || return 1
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%%#*}"
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [ -z "$line" ] && continue
+    local name="${line%%:*}"
+    local binary="${line#*:}"
+    name="${name%"${name##*[![:space:]]}"}"
+    binary="${binary#"${binary%%[![:space:]]*}"}"
+    if [ "$name" = "$formula" ]; then
+      printf '%s' "$binary"
+      return 0
+    fi
+  done < "$BINARIES_FILE"
+  return 1
+}
+
 mkdir -p "$RESULTS_DIR" "$LOG_DIR" "$STATE_ROOT" "$BREW_CACHE"
 
 command -v "$BREW_BIN" >/dev/null 2>&1 || die "brew not found"
@@ -95,7 +171,7 @@ done < "$FORMULAS_FILE"
 
 installed_formulas="$($BREW_BIN list --formula 2>/dev/null || true)"
 is_installed() {
-  printf '%s\n' "$installed_formulas" | grep -qx "$1"
+  printf '%s\n' "$installed_formulas" | grep -Fqx "$1"
 }
 
 selected=()
@@ -155,6 +231,10 @@ fi
 SINGLE_FORMULA="${SINGLE_FORMULA:-${selected[0]}}"
 
 printf '%s\n' "${selected[@]}" > "$RESULTS_DIR/formulas.txt"
+log "Selected formulas (${#selected[@]}): ${selected[*]}"
+
+ensure_safe_path "$COLDBREW_HOME" "COLDBREW_HOME"
+ensure_safe_path "$BREW_CACHE" "BREW_CACHE"
 
 rm -rf "$COLDBREW_HOME"
 mkdir -p "$COLDBREW_HOME"
@@ -181,6 +261,52 @@ crew_cmd update
 log "Preinstalling formulas"
 crew_cmd install "${selected[@]}"
 brew_cmd install --formula --force-bottle "${selected[@]}"
+
+if [ "$VERIFY_INSTALL" -eq 1 ]; then
+  log "Verifying installed formulas"
+  crew_installed="$(crew_cmd list --names-only 2>/dev/null || true)"
+  brew_installed="$(brew_cmd list --formula 2>/dev/null || true)"
+
+  missing=()
+  for formula in "${selected[@]}"; do
+    if ! printf '%s\n' "$crew_installed" | grep -Fqx "$formula"; then
+      missing+=("$formula")
+    fi
+  done
+  if [ "${#missing[@]}" -gt 0 ]; then
+    die "coldbrew missing formulas: ${missing[*]}"
+  fi
+
+  missing=()
+  for formula in "${selected[@]}"; do
+    if ! printf '%s\n' "$brew_installed" | grep -Fqx "$formula"; then
+      missing+=("$formula")
+    fi
+  done
+  if [ "${#missing[@]}" -gt 0 ]; then
+    die "homebrew missing formulas: ${missing[*]}"
+  fi
+
+  if [ "$VERIFY_BINARIES" -eq 1 ]; then
+    if [ -f "$BINARIES_FILE" ]; then
+      log "Verifying binaries from $BINARIES_FILE"
+      for formula in "${selected[@]}"; do
+        binary="$(lookup_binary "$formula" || true)"
+        if [ -z "$binary" ]; then
+          continue
+        fi
+        if ! command -v "$binary" >/dev/null 2>&1; then
+          if [ "$VERIFY_BINARIES_STRICT" -eq 1 ]; then
+            die "binary '$binary' for '$formula' not found in PATH"
+          fi
+          echo "warning: binary '$binary' for '$formula' not found in PATH" >&2
+        fi
+      done
+    else
+      echo "warning: BINARIES_FILE not found at $BINARIES_FILE, skipping binary checks" >&2
+    fi
+  fi
+fi
 
 log "Writing metadata"
 os_name="$(sw_vers -productName 2>/dev/null || uname -s)"

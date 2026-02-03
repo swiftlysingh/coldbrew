@@ -36,6 +36,7 @@ Environment variables supported by `bench/run.sh`:
 - `WARMUP` (default `1`)
 - `FORMULA_COUNT` (default `10`)
 - `ALLOW_INSTALLED` (default `0`, set to `1` to include installed formulas)
+- `ALLOW_DESTRUCTIVE` (default `0`, set to `1` to allow deletes outside `bench/state`)
 - `SEARCH_TERM` (default `python`)
 - `SINGLE_FORMULA` (default: first selected formula)
 - `CREW_BIN` (default `target/release/crew`)
@@ -46,15 +47,22 @@ Environment variables supported by `bench/run.sh`:
 - `STATE_ROOT` (default `bench/state`)
 - `COLDBREW_HOME` (default `bench/state/coldbrew`)
 - `BREW_CACHE` (default `bench/state/brew-cache`)
+- `VERIFY_INSTALL` (default `1`, verify selected formulas are installed)
+- `VERIFY_BINARIES` (default `1`, verify binaries in `BINARIES_FILE` are on PATH)
+- `VERIFY_BINARIES_STRICT` (default `0`, fail if a binary is missing from PATH)
+- `BINARIES_FILE` (default `bench/binaries.txt`)
 
 ## Notes
 
 - Homebrew installs still target your system prefix. The script isolates only
   Homebrew downloads with `HOMEBREW_CACHE` under `bench/state`.
+- `COLDBREW_HOME` and `BREW_CACHE` must live under `bench/state` unless
+  `ALLOW_DESTRUCTIVE=1` is set.
 - The script disables Homebrew auto-update and cleanup for stability.
 - Coldbrew formulas are updated once before installs to ensure the index exists.
 - Coldbrew treats `name@version` as a version spec, so avoid `@` formulas unless
   you intend to install by version.
 - `meta.json` includes machine specs (OS, CPU, memory) for each run.
+- `bench/binaries.txt` maps formulas to binaries for optional verification (uses `command -v`).
 - Results are written as JSON/Markdown per scenario. If `python3` is available,
   a `summary.md` table is generated.
