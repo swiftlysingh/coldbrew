@@ -105,10 +105,7 @@ pub async fn install_dependencies_for_root_with_list(
         return Ok(HashMap::new());
     }
 
-    output.info(&format!(
-        "Installing {} dependencies...",
-        direct_deps.len()
-    ));
+    output.info(&format!("Installing {} dependencies...", direct_deps.len()));
 
     let mut resolver = DependencyResolver::new();
     resolver.add_formulas(formula_map.values().cloned());
