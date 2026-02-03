@@ -17,7 +17,21 @@ A Homebrew-compatible package manager in Rust - user-controlled, fast, and repro
 
 ## Installation
 
-Coldbrew is not published on crates.io yet. Install from source:
+Coldbrew is not published on crates.io yet.
+
+### Install from GitHub Releases (recommended)
+
+1. Download the appropriate archive from the GitHub Releases page:
+   https://github.com/swiftlysingh/coldbrew/releases
+2. Extract the `crew` binary.
+3. Move it to a directory on your `PATH` (for example, `/usr/local/bin` or `~/.local/bin`).
+4. Run `crew --help` to verify it works.
+
+Note: Linux release artifacts are not currently tested in CI. Please report any issues.
+
+### Install from source (dev)
+
+Install from source:
 
 ```bash
 git clone https://github.com/swiftlysingh/coldbrew
