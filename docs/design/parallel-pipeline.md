@@ -17,10 +17,11 @@ the current implementation.
 - Codesign: apply a signature to Mach-O files (macOS only).
 
 ## Current Coldbrew behavior (today)
-- Downloads are parallelized with a single semaphore (`parallel_downloads`).
-- Each download task does: download -> verify -> extract into store.
-- Install steps (materialize -> relocate -> codesign -> link) run serially per package
-  in dependency order.
+- Downloads are parallelized (`parallel_downloads`) and bounded separately from extraction.
+- Extraction is bounded (`parallel_extractions`) and uses per-sha store locks.
+- Install steps (materialize -> relocate -> codesign -> link) can overlap across packages,
+  bounded by `parallel_installs`.
+- Codesigning is bounded (`parallel_codesigning`, macOS only).
 - `crew update` downloads one `formula.json` file; there is no parallel update work.
 
 ## Proposed behavior (plan)
@@ -83,12 +84,13 @@ Multi-stage semaphores can introduce new problems if we are not careful:
 - Progress UX: show stage summaries rather than noisy per-file updates.
 
 ## Comparison (high level)
-- Current Coldbrew: parallel downloads only; extract and codesign are not separately bounded.
-- Planned Coldbrew: explicit stage limits and overlap between packages.
-- Homebrew (conceptual): focuses on download concurrency; this plan adds stage-specific limits for
-  our install pipeline. We are not changing update behavior in this phase.
+- Coldbrew: explicit stage limits and overlap between packages.
+- Homebrew (conceptual): focuses on download concurrency; Coldbrew adds stage-specific limits for
+  the install pipeline. We are not changing update behavior in this phase.
 
-## Implementation notes (future)
-- Add settings: `parallel_extractions`, `parallel_codesigning`.
-- Wire stage semaphores in `src/ops/install.rs`.
-- Keep `crew update` unchanged (single index file download).
+## Implementation notes
+- Settings: `parallel_downloads`, `parallel_extractions`, `parallel_codesigning`,
+  `parallel_installs`.
+- Stage semaphores live in `src/ops/install.rs`.
+- Install stage totals are logged in debug output.
+- `crew update` is unchanged (single index file download).
