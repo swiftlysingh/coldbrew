@@ -74,18 +74,49 @@ crew install # Install from lockfile
 | `search <query>` | Search for packages |
 | `info <package>` | Show package details |
 | `install <packages>` | Install packages |
+| `migrate` | Migrate Homebrew-installed formulas |
 | `uninstall <packages>` | Uninstall packages |
 | `upgrade [packages]` | Upgrade packages |
 | `list` | List installed packages |
 | `which <binary>` | Show which package provides a binary |
 | `pin <package>` | Pin a package version |
+| `unpin <package>` | Unpin a package |
 | `default <package@version>` | Set default version |
+| `dependents <package>` | Show packages that depend on a package |
 | `init` | Create coldbrew.toml |
 | `lock` | Generate lockfile |
-| `tap <user/repo>` | Add third-party repository |
+| `tap <user/repo>` | Add or remove a tap |
 | `space` | Show disk usage and cleanup candidates |
 | `space clean [--all] [--dry-run]` | Interactive cleanup |
+| `link <package>` | Force-link a keg-only package |
+| `unlink <package>` | Remove links for a package |
 | `doctor` | Check for problems |
+| `completions <shell>` | Generate shell completions |
+
+## Migration
+
+Bring your Homebrew-installed formulas into Coldbrew:
+
+```bash
+crew migrate
+```
+
+Notes:
+- Homebrew casks are not supported and will be skipped with a warning.
+- Only Homebrew core formulas are migrated.
+- After a successful migrate, crew prompts to remove matching Homebrew formulas in interactive sessions; non-interactive runs skip cleanup with a warning.
+
+## Shell Integration
+
+Add Coldbrew to your PATH:
+
+```bash
+# bash/zsh
+export PATH="$HOME/.coldbrew/bin:$PATH"
+
+# fish
+fish_add_path ~/.coldbrew/bin
+```
 
 ## Man Page
 

@@ -1,7 +1,7 @@
 //! Link command - force-link keg-only packages
 
+use crate::cli::commands::spec::resolve_installed_spec;
 use crate::cli::output::Output;
-use crate::core::version::parse_package_spec;
 use crate::error::{ColdbrewError, Result};
 use crate::storage::{Cellar, Paths, ShimManager};
 
@@ -11,7 +11,7 @@ pub async fn execute(package: &str, force: bool, output: &Output) -> Result<()> 
     let cellar = Cellar::new(paths.clone());
     let shim_manager = ShimManager::new(paths);
 
-    let (name, version) = parse_package_spec(package);
+    let (name, version) = resolve_installed_spec(package, &cellar)?;
 
     // Get the version to link
     let versions = cellar.get_versions(&name)?;
@@ -76,7 +76,7 @@ pub async fn execute_unlink(package: &str, output: &Output) -> Result<()> {
     let cellar = Cellar::new(paths.clone());
     let shim_manager = ShimManager::new(paths);
 
-    let (name, version) = parse_package_spec(package);
+    let (name, version) = resolve_installed_spec(package, &cellar)?;
 
     // Get binaries to unlink
     let versions = cellar.get_versions(&name)?;

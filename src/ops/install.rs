@@ -55,6 +55,120 @@ pub async fn install(
     .await
 }
 
+/// Install dependencies for a package without installing the package itself.
+pub async fn install_dependencies_for_root(
+    paths: &Paths,
+    name: &str,
+    output: &Output,
+) -> Result<HashMap<String, String>> {
+    install_dependencies_for_root_with_list(paths, name, None, output).await
+}
+
+pub async fn install_dependencies_for_root_with_list(
+    paths: &Paths,
+    name: &str,
+    deps: Option<&[String]>,
+    output: &Output,
+) -> Result<HashMap<String, String>> {
+    let index = Index::new(paths.clone());
+    let cellar = Cellar::new(paths.clone());
+    let cache = Cache::new(paths.clone());
+    let shim_manager = ShimManager::new(paths.clone());
+    let ghcr = GhcrClient::new()?;
+    let platform = Platform::detect()?;
+    let ctx = InstallContext {
+        paths,
+        cache: &cache,
+        shim_manager: &shim_manager,
+        ghcr: &ghcr,
+        platform: &platform,
+        cellar: &cellar,
+        output,
+    };
+
+    let formulas = index.list_formulas()?;
+    let mut formula_map = HashMap::new();
+    for formula in formulas {
+        formula_map.insert(formula.name.clone(), formula);
+    }
+
+    let root_formula = formula_map
+        .get(name)
+        .ok_or_else(|| ColdbrewError::PackageNotFound(name.to_string()))?;
+
+    let direct_deps: Vec<String> = match deps {
+        Some(deps) => deps.to_vec(),
+        None => root_formula.dependencies.clone(),
+    };
+
+    if direct_deps.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    output.info(&format!("Installing {} dependencies...", direct_deps.len()));
+
+    let mut resolver = DependencyResolver::new();
+    resolver.add_formulas(formula_map.values().cloned());
+    let install_order = if deps.is_none() {
+        resolver.resolve(name)?
+    } else {
+        let mut order = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        for dep in &direct_deps {
+            for resolved in resolver.resolve(dep)? {
+                if seen.insert(resolved.name.clone()) {
+                    order.push(resolved);
+                }
+            }
+        }
+        order
+    };
+
+    let mut installed_versions: HashMap<String, String> = HashMap::new();
+
+    for dep in install_order {
+        if dep.name == name {
+            continue;
+        }
+
+        if let Some(existing) = cellar.latest_version(&dep.name)? {
+            output.debug(&format!(
+                "Dependency {} already installed at {}",
+                dep.name, existing
+            ));
+            installed_versions.insert(dep.name.clone(), existing);
+            continue;
+        }
+
+        let formula = formula_map
+            .get(&dep.name)
+            .ok_or_else(|| ColdbrewError::PackageNotFound(dep.name.clone()))?;
+
+        let target_version = formula.version_with_revision();
+        let runtime_deps = resolve_runtime_deps(formula, &installed_versions, &cellar, paths)?;
+
+        let options = InstallOptions {
+            installed_as_dependency: true,
+            installed_for: Some(name),
+            force: false,
+        };
+
+        let installed = install_single(
+            &ctx,
+            &dep.name,
+            &target_version,
+            formula,
+            runtime_deps,
+            options,
+        )
+        .await?;
+
+        installed_versions.insert(dep.name.clone(), installed.version.clone());
+    }
+
+    Ok(installed_versions)
+}
+
 async fn install_with_policy(
     paths: &Paths,
     name: &str,

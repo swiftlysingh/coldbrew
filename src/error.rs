@@ -97,6 +97,9 @@ pub enum ColdbrewError {
     #[error("GHCR authentication failed: {0}")]
     GhcrAuthFailed(String),
 
+    #[error("Homebrew (brew) was not found")]
+    HomebrewNotFound,
+
     #[error("Download failed: {0}")]
     DownloadFailed(String),
 
@@ -149,10 +152,13 @@ impl ColdbrewError {
             }
             ColdbrewError::PackagePinned(_) => Some("Use 'crew unpin <package>' to allow upgrades"),
             ColdbrewError::ChecksumMismatch { .. } => {
-                Some("Try running 'crew clean' and retry the installation")
+                Some("Try running 'crew space clean' and retry the installation")
             }
             ColdbrewError::VersionNotAvailable { .. } => {
                 Some("Run 'crew info <package>' to see the current available version")
+            }
+            ColdbrewError::HomebrewNotFound => {
+                Some("Install Homebrew or pass --brew <path> to 'crew migrate'")
             }
             _ => None,
         }
