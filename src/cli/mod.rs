@@ -117,7 +117,7 @@ pub enum Commands {
         names_only: bool,
 
         /// Show versions for a specific package
-        #[arg(short, long)]
+        #[arg(long)]
         versions: Option<String>,
     },
 
