@@ -14,6 +14,7 @@ A Homebrew-compatible package manager in Rust - user-controlled, fast, and repro
 
 - Core principles, CLI behavior, and Homebrew integration: `docs/design/core-principles-homebrew.md`
 - Performance roadmap and zerobrew-inspired ideas: `docs/design/zerobrew-performance.md`
+- Parallel install pipeline plan: `docs/design/parallel-pipeline.md`
 
 ## Installation
 

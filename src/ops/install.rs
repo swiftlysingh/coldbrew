@@ -29,6 +29,9 @@ struct InstallContext<'a> {
     platform: &'a Platform,
     cellar: &'a Cellar,
     output: &'a Output,
+    download_semaphore: Arc<Semaphore>,
+    extract_semaphore: Arc<Semaphore>,
+    codesign_semaphore: Arc<Semaphore>,
 }
 
 struct InstallOptions<'a> {
@@ -75,6 +78,9 @@ async fn install_with_policy(
 ) -> Result<InstalledPackage> {
     let config = GlobalConfig::load(paths)?;
     let cdn_racing = config.settings.cdn_racing;
+    let download_semaphore = Arc::new(Semaphore::new(config.settings.parallel_downloads.max(1)));
+    let extract_semaphore = Arc::new(Semaphore::new(config.settings.parallel_extractions.max(1)));
+    let codesign_semaphore = Arc::new(Semaphore::new(config.settings.parallel_codesigning.max(1)));
 
     let index = Index::new(paths.clone());
     let cellar = Cellar::new(paths.clone());
@@ -92,6 +98,9 @@ async fn install_with_policy(
         platform: &platform,
         cellar: &cellar,
         output,
+        download_semaphore,
+        extract_semaphore,
+        codesign_semaphore,
     };
 
     let formulas = index.list_formulas()?;
@@ -153,7 +162,8 @@ async fn install_with_policy(
             store.clone(),
             ghcr.clone(),
             download_groups,
-            parallel_downloads,
+            ctx.download_semaphore.clone(),
+            ctx.extract_semaphore.clone(),
             paths.clone(),
             output,
         ))
@@ -459,11 +469,11 @@ impl DownloadManager {
         store: Arc<Store>,
         ghcr: Arc<GhcrClient>,
         groups: Vec<DownloadGroup>,
-        parallel_downloads: usize,
+        download_semaphore: Arc<Semaphore>,
+        extract_semaphore: Arc<Semaphore>,
         paths: Paths,
         output: &Output,
     ) -> Self {
-        let semaphore = Arc::new(Semaphore::new(parallel_downloads.max(1)));
         let progress = DownloadProgress::new(groups.len(), "Downloading bottles");
         let mut handles = HashMap::new();
 
@@ -472,17 +482,22 @@ impl DownloadManager {
             let cache = cache.clone();
             let store = store.clone();
             let ghcr = ghcr.clone();
-            let semaphore = semaphore.clone();
+            let download_semaphore = download_semaphore.clone();
+            let extract_semaphore = extract_semaphore.clone();
             let progress = progress.clone();
             let paths = paths.clone();
 
             let handle = tokio::spawn(async move {
-                let _permit = semaphore.acquire_owned().await.map_err(|err| {
-                    ColdbrewError::Other(format!("Failed to acquire download slot: {}", err))
-                })?;
-                let result =
-                    download_group(&paths, ghcr.as_ref(), cache.as_ref(), store.as_ref(), group)
-                        .await;
+                let result = download_group(
+                    &paths,
+                    ghcr.as_ref(),
+                    cache.as_ref(),
+                    store.as_ref(),
+                    download_semaphore,
+                    extract_semaphore,
+                    group,
+                )
+                .await;
                 if let Some(progress) = progress.as_ref() {
                     progress.mark_complete();
                 }
@@ -641,6 +656,8 @@ async fn download_group(
     ghcr: &GhcrClient,
     cache: &Cache,
     store: &Store,
+    download_semaphore: Arc<Semaphore>,
+    extract_semaphore: Arc<Semaphore>,
     group: DownloadGroup,
 ) -> Result<DownloadResult> {
     let bottle_plan = BottlePlan {
@@ -661,6 +678,8 @@ async fn download_group(
         &bottle_plan,
         &group.name,
         &group.version,
+        download_semaphore,
+        extract_semaphore,
     )
     .await?;
 
@@ -681,6 +700,8 @@ async fn prepare_bottle(
     bottle_plan: &BottlePlan,
     name: &str,
     version: &str,
+    download_semaphore: Arc<Semaphore>,
+    extract_semaphore: Arc<Semaphore>,
 ) -> Result<PrepareResult> {
     let start = Instant::now();
     let mut download_duration = Duration::ZERO;
@@ -704,6 +725,13 @@ async fn prepare_bottle(
 
             let downloaded_bytes = Arc::new(AtomicU64::new(0));
             let downloaded_bytes_clone = downloaded_bytes.clone();
+            let _permit = download_semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .map_err(|err| {
+                    ColdbrewError::Other(format!("Failed to acquire download slot: {}", err))
+                })?;
             let download_start = Instant::now();
             ctx.ghcr
                 .download_bottle(formula, &bottle_plan.file, &temp_path, |downloaded, _| {
@@ -745,7 +773,17 @@ async fn prepare_bottle(
         }
 
         let extract_start = Instant::now();
-        match ctx.store.ensure_entry(sha256, &dest) {
+        let entry = {
+            let _permit = extract_semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .map_err(|err| {
+                    ColdbrewError::Other(format!("Failed to acquire extraction slot: {}", err))
+                })?;
+            ctx.store.ensure_entry(sha256, &dest)
+        };
+        match entry {
             Ok(entry) => {
                 extract_duration += extract_start.elapsed();
                 let db = Database::new(ctx.paths.clone());
@@ -800,7 +838,16 @@ async fn install_single(
             store: ctx.store,
             ghcr: ctx.ghcr,
         };
-        let prepare = prepare_bottle(&prepare_ctx, formula, &bottle_plan, name, version).await?;
+        let prepare = prepare_bottle(
+            &prepare_ctx,
+            formula,
+            &bottle_plan,
+            name,
+            version,
+            ctx.download_semaphore.clone(),
+            ctx.extract_semaphore.clone(),
+        )
+        .await?;
 
         if prepare.downloaded && prepare.bytes_downloaded > 0 {
             ctx.output.debug(&format!(
@@ -852,6 +899,14 @@ async fn install_single(
                 summary.relocated_files
             ));
             ctx.output.debug("Codesigning Mach-O files...");
+            let _permit = ctx
+                .codesign_semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .map_err(|err| {
+                    ColdbrewError::Other(format!("Failed to acquire codesign slot: {}", err))
+                })?;
             if let Err(err) = relocate::codesign_macho_tree(&install_path, ctx.platform, ctx.output)
             {
                 cleanup_failed_install(ctx, name, version);

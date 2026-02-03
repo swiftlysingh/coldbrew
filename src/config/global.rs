@@ -30,8 +30,16 @@ pub struct Settings {
     pub auto_update: bool,
 
     /// Number of parallel downloads
-    #[serde(default = "default_parallel")]
+    #[serde(default = "default_parallel_downloads")]
     pub parallel_downloads: usize,
+
+    /// Number of parallel extractions
+    #[serde(default = "default_parallel_extractions")]
+    pub parallel_extractions: usize,
+
+    /// Number of parallel codesigning jobs
+    #[serde(default = "default_parallel_codesigning")]
+    pub parallel_codesigning: usize,
 
     /// Keep old versions (default: 2)
     #[serde(default = "default_keep_versions")]
@@ -50,10 +58,29 @@ fn default_true() -> bool {
     true
 }
 
-fn default_parallel() -> usize {
+fn default_parallel_downloads() -> usize {
     std::thread::available_parallelism()
-        .map(|count| count.get().max(2))
+        .map(|count| {
+            let cpus = count.get();
+            let downloads = cpus.saturating_mul(2);
+            downloads.max(2).min(16)
+        })
         .unwrap_or(4)
+}
+
+fn default_parallel_extractions() -> usize {
+    std::thread::available_parallelism()
+        .map(|count| {
+            let cpus = count.get();
+            cpus.saturating_sub(1).max(1).min(4)
+        })
+        .unwrap_or(2)
+}
+
+fn default_parallel_codesigning() -> usize {
+    std::thread::available_parallelism()
+        .map(|count| count.get().max(1).min(4))
+        .unwrap_or(2)
 }
 
 fn default_keep_versions() -> usize {
@@ -64,7 +91,9 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             auto_update: true,
-            parallel_downloads: 4,
+            parallel_downloads: default_parallel_downloads(),
+            parallel_extractions: default_parallel_extractions(),
+            parallel_codesigning: default_parallel_codesigning(),
             keep_versions: 2,
             analytics: false,
             cdn_racing: false,
@@ -149,6 +178,12 @@ mod tests {
         assert!(config.pins.is_empty());
         assert!(config.settings.auto_update);
         assert!(!config.settings.cdn_racing);
+        assert!(config.settings.parallel_downloads >= 2);
+        assert!(config.settings.parallel_downloads <= 16);
+        assert!(config.settings.parallel_extractions >= 1);
+        assert!(config.settings.parallel_extractions <= 4);
+        assert!(config.settings.parallel_codesigning >= 1);
+        assert!(config.settings.parallel_codesigning <= 4);
     }
 
     #[test]
