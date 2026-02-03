@@ -172,6 +172,18 @@ Coldbrew root directory.
 .TP
 .B ~/.coldbrew/config.toml
 Global configuration file.
+.RS
+.IP "parallel_downloads = 8"
+Maximum concurrent downloads (network-bound). Default: min(cpus * 2, 16).
+.IP "parallel_extractions = 3"
+Maximum concurrent extractions (CPU + disk). Default: min(cpus - 1, 4).
+.IP "parallel_codesigning = 2"
+Maximum concurrent codesign jobs (macOS only). Default: min(cpus, 4).
+.IP "parallel_installs = 3"
+Maximum concurrent install tasks. Default: min(cpus - 1, 4).
+.IP "per_bottle_progress = false"
+Show one progress bar per bottle download.
+.RE
 .TP
 .B coldbrew.toml
 Project configuration file in the current directory or a parent.

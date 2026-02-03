@@ -34,9 +34,13 @@ impl Paths {
             &self.bin_dir(),
             &self.cellar_dir(),
             &self.cache_dir(),
+            &self.cache_blobs_dir(),
             &self.taps_dir(),
             &self.index_dir(),
             &self.logs_dir(),
+            &self.db_dir(),
+            &self.store_dir(),
+            &self.locks_dir(),
         ];
 
         for dir in dirs {
@@ -74,6 +78,11 @@ impl Paths {
         self.cache_dir().join("downloads")
     }
 
+    /// Blob cache directory (~/.coldbrew/cache/blobs)
+    pub fn cache_blobs_dir(&self) -> PathBuf {
+        self.cache_dir().join("blobs")
+    }
+
     /// Taps directory (~/.coldbrew/taps)
     pub fn taps_dir(&self) -> PathBuf {
         self.root.join("taps")
@@ -89,6 +98,21 @@ impl Paths {
         self.root.join("logs")
     }
 
+    /// Database directory (~/.coldbrew/db)
+    pub fn db_dir(&self) -> PathBuf {
+        self.root.join("db")
+    }
+
+    /// Content-addressable store directory (~/.coldbrew/store)
+    pub fn store_dir(&self) -> PathBuf {
+        self.root.join("store")
+    }
+
+    /// Lock directory for store operations (~/.coldbrew/locks)
+    pub fn locks_dir(&self) -> PathBuf {
+        self.root.join("locks")
+    }
+
     /// Global config file (~/.coldbrew/config.toml)
     pub fn config_file(&self) -> PathBuf {
         self.root.join("config.toml")
@@ -97,6 +121,11 @@ impl Paths {
     /// Formula index file (~/.coldbrew/index/formula.json)
     pub fn formula_index(&self) -> PathBuf {
         self.index_dir().join("formula.json")
+    }
+
+    /// SQLite metadata database file (~/.coldbrew/db/coldbrew.sqlite3)
+    pub fn db_file(&self) -> PathBuf {
+        self.db_dir().join("coldbrew.sqlite3")
     }
 
     /// Get the cellar path for a specific package version
@@ -116,6 +145,33 @@ impl Paths {
     pub fn cache_bottle(&self, name: &str, version: &str, tag: &str) -> PathBuf {
         self.downloads_dir()
             .join(format!("{}-{}.{}.bottle.tar.gz", name, version, tag))
+    }
+
+    /// Get the blob cache path for a bottle by sha256
+    /// e.g., ~/.coldbrew/cache/blobs/<sha256>.bottle.tar.gz
+    pub fn cache_blob(&self, sha256: &str) -> PathBuf {
+        self.cache_blobs_dir()
+            .join(format!("{}.bottle.tar.gz", sha256))
+    }
+
+    /// Get a temp path for an in-flight blob download
+    pub fn cache_blob_temp(&self, sha256: &str) -> PathBuf {
+        self.cache_blobs_dir().join(format!("{}.part", sha256))
+    }
+
+    /// Get the store entry path for a blob
+    pub fn store_entry(&self, sha256: &str) -> PathBuf {
+        self.store_dir().join(sha256)
+    }
+
+    /// Get the store lock path for a blob
+    pub fn store_lock(&self, sha256: &str) -> PathBuf {
+        self.locks_dir().join(format!("{}.lock", sha256))
+    }
+
+    /// Global lock for shim writes
+    pub fn shims_lock(&self) -> PathBuf {
+        self.locks_dir().join("shims.lock")
     }
 
     /// Get the shim path for a binary
@@ -218,6 +274,11 @@ mod tests {
         assert_eq!(paths.bin_dir(), temp.path().join("bin"));
         assert_eq!(paths.cellar_dir(), temp.path().join("cellar"));
         assert_eq!(paths.cache_dir(), temp.path().join("cache"));
+        assert_eq!(
+            paths.cache_blobs_dir(),
+            temp.path().join("cache").join("blobs")
+        );
+        assert_eq!(paths.store_dir(), temp.path().join("store"));
     }
 
     #[test]
@@ -242,6 +303,9 @@ mod tests {
         assert!(paths.bin_dir().exists());
         assert!(paths.cellar_dir().exists());
         assert!(paths.cache_dir().exists());
+        assert!(paths.cache_blobs_dir().exists());
+        assert!(paths.store_dir().exists());
+        assert!(paths.locks_dir().exists());
     }
 
     #[test]

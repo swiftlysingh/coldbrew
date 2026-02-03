@@ -121,6 +121,9 @@ pub enum ColdbrewError {
     #[error("Walkdir error: {0}")]
     Walkdir(#[from] walkdir::Error),
 
+    #[error("Database error: {0}")]
+    Database(#[from] rusqlite::Error),
+
     #[error("{0}")]
     Other(String),
 }

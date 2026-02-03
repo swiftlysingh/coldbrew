@@ -13,6 +13,7 @@ A Homebrew-compatible package manager in Rust - user-controlled, fast, and repro
 ## Design Docs
 
 - Core principles, CLI behavior, and Homebrew integration: `docs/core-principles-homebrew.md`
+- Parallel install pipeline plan: `docs/parallel-pipeline.md`
 
 ## Installation
 
@@ -63,6 +64,19 @@ Then run:
 ```bash
 crew lock    # Generate lockfile
 crew install # Install from lockfile
+```
+
+## Global Configuration
+
+Global settings live in `~/.coldbrew/config.toml`. Example:
+
+```toml
+[settings]
+parallel_downloads = 8      # min(cpus * 2, 16)
+parallel_extractions = 3    # min(cpus - 1, 4)
+parallel_codesigning = 2    # min(cpus, 4)
+parallel_installs = 3       # min(cpus - 1, 4)
+per_bottle_progress = false # show per-bottle download bars
 ```
 
 ## Commands

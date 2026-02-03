@@ -7,8 +7,10 @@ use crate::error::{ColdbrewError, Result};
 use crate::storage::paths::Paths;
 use std::collections::HashMap;
 use std::fs;
+use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 /// Manages shims for installed packages
 pub struct ShimManager {
@@ -28,6 +30,7 @@ impl ShimManager {
         version: &str,
         binaries: &[String],
     ) -> Result<Vec<PathBuf>> {
+        let _lock = ShimLock::acquire(self.paths.shims_lock())?;
         let bin_dir = self.paths.bin_dir();
         fs::create_dir_all(&bin_dir)?;
 
@@ -74,6 +77,7 @@ exec crew exec {package} {binary} "$@"
 
     /// Remove shims for a package
     pub fn remove_shims(&self, binaries: &[String]) -> Result<()> {
+        let _lock = ShimLock::acquire(self.paths.shims_lock())?;
         let bin_dir = self.paths.bin_dir();
 
         for binary in binaries {
@@ -177,6 +181,51 @@ exec crew exec {package} {binary} "$@"
         }
 
         Ok(binary_path)
+    }
+}
+
+struct ShimLock {
+    path: PathBuf,
+    owned: bool,
+}
+
+impl ShimLock {
+    fn acquire(lock_path: PathBuf) -> Result<Self> {
+        if let Some(parent) = lock_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let start = Instant::now();
+        loop {
+            match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&lock_path)
+            {
+                Ok(_) => {
+                    return Ok(Self {
+                        path: lock_path,
+                        owned: true,
+                    })
+                }
+                Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {
+                    if start.elapsed() > Duration::from_secs(30) {
+                        return Err(ColdbrewError::Other(
+                            "Timed out waiting for shims lock".to_string(),
+                        ));
+                    }
+                    std::thread::sleep(Duration::from_millis(200));
+                }
+                Err(err) => return Err(err.into()),
+            }
+        }
+    }
+}
+
+impl Drop for ShimLock {
+    fn drop(&mut self) {
+        if self.owned {
+            let _ = fs::remove_file(&self.path);
+        }
     }
 }
 

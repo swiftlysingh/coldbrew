@@ -30,8 +30,24 @@ pub struct Settings {
     pub auto_update: bool,
 
     /// Number of parallel downloads
-    #[serde(default = "default_parallel")]
+    #[serde(default = "default_parallel_downloads")]
     pub parallel_downloads: usize,
+
+    /// Number of parallel extractions
+    #[serde(default = "default_parallel_extractions")]
+    pub parallel_extractions: usize,
+
+    /// Number of parallel codesigning jobs
+    #[serde(default = "default_parallel_codesigning")]
+    pub parallel_codesigning: usize,
+
+    /// Number of parallel installs
+    #[serde(default = "default_parallel_installs")]
+    pub parallel_installs: usize,
+
+    /// Show per-bottle download progress bars (default: false)
+    #[serde(default)]
+    pub per_bottle_progress: bool,
 
     /// Keep old versions (default: 2)
     #[serde(default = "default_keep_versions")]
@@ -40,14 +56,48 @@ pub struct Settings {
     /// Enable analytics (default: false)
     #[serde(default)]
     pub analytics: bool,
+
+    /// Enable CDN racing for downloads (default: false)
+    #[serde(default)]
+    pub cdn_racing: bool,
 }
 
 fn default_true() -> bool {
     true
 }
 
-fn default_parallel() -> usize {
-    4
+fn default_parallel_downloads() -> usize {
+    std::thread::available_parallelism()
+        .map(|count| {
+            let cpus = count.get();
+            let downloads = cpus.saturating_mul(2);
+            downloads.clamp(2, 16)
+        })
+        .unwrap_or(4)
+}
+
+fn default_parallel_extractions() -> usize {
+    std::thread::available_parallelism()
+        .map(|count| {
+            let cpus = count.get();
+            cpus.saturating_sub(1).clamp(1, 4)
+        })
+        .unwrap_or(2)
+}
+
+fn default_parallel_codesigning() -> usize {
+    std::thread::available_parallelism()
+        .map(|count| count.get().clamp(1, 4))
+        .unwrap_or(2)
+}
+
+fn default_parallel_installs() -> usize {
+    std::thread::available_parallelism()
+        .map(|count| {
+            let cpus = count.get();
+            cpus.saturating_sub(1).clamp(1, 4)
+        })
+        .unwrap_or(2)
 }
 
 fn default_keep_versions() -> usize {
@@ -58,9 +108,14 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             auto_update: true,
-            parallel_downloads: 4,
+            parallel_downloads: default_parallel_downloads(),
+            parallel_extractions: default_parallel_extractions(),
+            parallel_codesigning: default_parallel_codesigning(),
+            parallel_installs: default_parallel_installs(),
+            per_bottle_progress: false,
             keep_versions: 2,
             analytics: false,
+            cdn_racing: false,
         }
     }
 }
@@ -141,6 +196,16 @@ mod tests {
         assert!(config.defaults.is_empty());
         assert!(config.pins.is_empty());
         assert!(config.settings.auto_update);
+        assert!(!config.settings.cdn_racing);
+        assert!(config.settings.parallel_downloads >= 2);
+        assert!(config.settings.parallel_downloads <= 16);
+        assert!(config.settings.parallel_extractions >= 1);
+        assert!(config.settings.parallel_extractions <= 4);
+        assert!(config.settings.parallel_codesigning >= 1);
+        assert!(config.settings.parallel_codesigning <= 4);
+        assert!(config.settings.parallel_installs >= 1);
+        assert!(config.settings.parallel_installs <= 4);
+        assert!(!config.settings.per_bottle_progress);
     }
 
     #[test]

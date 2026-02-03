@@ -1,25 +1,42 @@
 //! Package installation
 
-use crate::cli::output::Output;
+use crate::cli::output::{format_bytes, format_duration, Output};
+use crate::config::GlobalConfig;
 use crate::core::package::{InstalledPackage, PackageMetadata, RuntimeDependency};
 use crate::core::platform::Os;
 use crate::core::version::{version_matches, Version};
-use crate::core::{DependencyResolver, Formula, Platform};
+use crate::core::{BottleFile, DependencyResolver, Formula, Platform};
 use crate::error::{ColdbrewError, Result};
 use crate::ops::relocate;
 use crate::ops::verify;
 use crate::registry::{GhcrClient, Index};
-use crate::storage::{Cache, Cellar, Paths, ShimManager};
-use std::collections::HashMap;
+use crate::storage::{Cache, Cellar, Database, Paths, ShimManager, Store};
+use futures_util::future::BoxFuture;
+use futures_util::stream::{FuturesUnordered, StreamExt};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use std::collections::{HashMap, VecDeque};
+use std::fs;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
+use tokio::sync::Semaphore;
+use tokio::task::JoinHandle;
 
 struct InstallContext<'a> {
     paths: &'a Paths,
     cache: &'a Cache,
+    store: &'a Store,
     shim_manager: &'a ShimManager,
     ghcr: &'a GhcrClient,
     platform: &'a Platform,
     cellar: &'a Cellar,
     output: &'a Output,
+    download_semaphore: Arc<Semaphore>,
+    install_semaphore: Arc<Semaphore>,
+    extract_semaphore: Arc<Semaphore>,
+    codesign_semaphore: Arc<Semaphore>,
+    metrics: Arc<Mutex<InstallMetrics>>,
 }
 
 struct InstallOptions<'a> {
@@ -64,20 +81,35 @@ async fn install_with_policy(
     version_policy: VersionPolicy,
     output: &Output,
 ) -> Result<InstalledPackage> {
+    let config = GlobalConfig::load(paths)?;
+    let cdn_racing = config.settings.cdn_racing;
+    let download_semaphore = Arc::new(Semaphore::new(config.settings.parallel_downloads.max(1)));
+    let install_semaphore = Arc::new(Semaphore::new(config.settings.parallel_installs.max(1)));
+    let extract_semaphore = Arc::new(Semaphore::new(config.settings.parallel_extractions.max(1)));
+    let codesign_semaphore = Arc::new(Semaphore::new(config.settings.parallel_codesigning.max(1)));
+    let metrics = Arc::new(Mutex::new(InstallMetrics::default()));
+
     let index = Index::new(paths.clone());
     let cellar = Cellar::new(paths.clone());
-    let cache = Cache::new(paths.clone());
+    let cache = Arc::new(Cache::new(paths.clone()));
+    let store = Arc::new(Store::new(paths.clone()));
     let shim_manager = ShimManager::new(paths.clone());
-    let ghcr = GhcrClient::new()?;
+    let ghcr = Arc::new(GhcrClient::new_with_options(cdn_racing)?);
     let platform = Platform::detect()?;
     let ctx = InstallContext {
         paths,
-        cache: &cache,
+        cache: cache.as_ref(),
+        store: store.as_ref(),
         shim_manager: &shim_manager,
-        ghcr: &ghcr,
+        ghcr: ghcr.as_ref(),
         platform: &platform,
         cellar: &cellar,
         output,
+        download_semaphore,
+        install_semaphore,
+        extract_semaphore,
+        codesign_semaphore,
+        metrics,
     };
 
     let formulas = index.list_formulas()?;
@@ -109,18 +141,59 @@ async fn install_with_policy(
         ));
     }
 
-    let mut installed_versions: HashMap<String, String> = HashMap::new();
-    let mut root_installed: Option<InstalledPackage> = None;
+    let download_groups = plan_download_groups(
+        &ctx,
+        &install_order,
+        &formula_map,
+        name,
+        version,
+        version_policy,
+        force,
+    )?;
+    let parallel_downloads = if download_groups.is_empty() {
+        1
+    } else {
+        std::cmp::min(
+            config.settings.parallel_downloads.max(1),
+            download_groups.len(),
+        )
+    };
 
-    for pkg_name in install_order {
+    let mut download_manager = if !download_groups.is_empty() {
+        output.info(&format!(
+            "Downloading {} bottles ({} parallel)",
+            download_groups.len(),
+            parallel_downloads
+        ));
+        cache.init()?;
+        Some(DownloadManager::start(
+            cache.clone(),
+            store.clone(),
+            ghcr.clone(),
+            download_groups,
+            ctx.download_semaphore.clone(),
+            ctx.extract_semaphore.clone(),
+            config.settings.per_bottle_progress,
+            paths.clone(),
+            output,
+        ))
+    } else {
+        None
+    };
+
+    let mut installed_versions: HashMap<String, String> = HashMap::new();
+    let mut target_versions: HashMap<String, String> = HashMap::new();
+    let mut install_plans: HashMap<String, InstallPlan> = HashMap::new();
+
+    for pkg_name in &install_order {
         let formula = formula_map
-            .get(&pkg_name)
+            .get(pkg_name)
             .ok_or_else(|| ColdbrewError::PackageNotFound(pkg_name.clone()))?;
 
         let is_root = pkg_name == name;
 
         if !is_root {
-            if let Some(existing) = cellar.latest_version(&pkg_name)? {
+            if let Some(existing) = cellar.latest_version(pkg_name)? {
                 output.debug(&format!(
                     "Dependency {} already installed at {}",
                     pkg_name, existing
@@ -133,7 +206,7 @@ async fn install_with_policy(
         let target_version = if is_root {
             match version {
                 Some(requested) => {
-                    resolve_requested_version(&pkg_name, requested, formula, version_policy)?
+                    resolve_requested_version(pkg_name, requested, formula, version_policy)?
                 }
                 None => formula.version_with_revision(),
             }
@@ -141,38 +214,162 @@ async fn install_with_policy(
             formula.version_with_revision()
         };
 
-        if is_root && cellar.is_installed(&pkg_name, &target_version) && !force {
+        if is_root && cellar.is_installed(pkg_name, &target_version) && !force {
             return Err(ColdbrewError::PackageAlreadyInstalled {
                 name: pkg_name.clone(),
                 version: target_version.clone(),
             });
         }
 
+        target_versions.insert(pkg_name.clone(), target_version.clone());
+    }
+
+    for pkg_name in &install_order {
+        if !target_versions.contains_key(pkg_name) {
+            continue;
+        }
+        let formula = formula_map
+            .get(pkg_name)
+            .ok_or_else(|| ColdbrewError::PackageNotFound(pkg_name.clone()))?;
+        let is_root = pkg_name == name;
         let runtime_deps = if is_root && skip_deps {
             Vec::new()
         } else {
-            resolve_runtime_deps(formula, &installed_versions, &cellar, paths)?
+            resolve_runtime_deps_with_targets(
+                formula,
+                &installed_versions,
+                &target_versions,
+                &cellar,
+                paths,
+            )?
         };
 
-        let options = InstallOptions {
-            installed_as_dependency: !is_root,
-            installed_for: if is_root { None } else { Some(name) },
-            force: is_root && force,
+        let bottle_plan = resolve_bottle(formula, ctx.platform, pkg_name)?;
+        let target_version = target_versions
+            .get(pkg_name)
+            .cloned()
+            .unwrap_or_else(|| formula.version_with_revision());
+
+        install_plans.insert(
+            pkg_name.clone(),
+            InstallPlan {
+                name: pkg_name.clone(),
+                version: target_version,
+                formula: formula.clone(),
+                bottle_plan,
+                runtime_deps,
+                installed_as_dependency: !is_root,
+                installed_for: if is_root {
+                    None
+                } else {
+                    Some(name.to_string())
+                },
+                force: is_root && force,
+            },
+        );
+    }
+
+    let mut deps_remaining: HashMap<String, usize> = HashMap::new();
+    let mut dependents: HashMap<String, Vec<String>> = HashMap::new();
+    for (pkg_name, plan) in &install_plans {
+        let mut count = 0;
+        if !(pkg_name == name && skip_deps) {
+            for dep in &plan.formula.dependencies {
+                if install_plans.contains_key(dep) {
+                    count += 1;
+                    dependents
+                        .entry(dep.clone())
+                        .or_default()
+                        .push(pkg_name.clone());
+                }
+            }
+        }
+        deps_remaining.insert(pkg_name.clone(), count);
+    }
+
+    let mut ready = VecDeque::new();
+    for (pkg_name, count) in &deps_remaining {
+        if *count == 0 {
+            ready.push_back(pkg_name.clone());
+        }
+    }
+
+    let mut futures: FuturesUnordered<BoxFuture<'_, Result<(String, InstalledPackage)>>> =
+        FuturesUnordered::new();
+    let mut root_installed: Option<InstalledPackage> = None;
+
+    while !ready.is_empty() || !futures.is_empty() {
+        while let Some(pkg_name) = ready.pop_front() {
+            let permit = match ctx.install_semaphore.clone().try_acquire_owned() {
+                Ok(permit) => permit,
+                Err(_) => {
+                    ready.push_front(pkg_name);
+                    break;
+                }
+            };
+            let plan = install_plans
+                .get(&pkg_name)
+                .cloned()
+                .ok_or_else(|| ColdbrewError::PackageNotFound(pkg_name.clone()))?;
+            if let Some(manager) = download_manager.as_mut() {
+                manager
+                    .wait_for(&plan.bottle_plan.file.sha256, output)
+                    .await?;
+            }
+            let ctx = &ctx;
+            futures.push(Box::pin(async move {
+                let _permit = permit;
+                let options = InstallOptions {
+                    installed_as_dependency: plan.installed_as_dependency,
+                    installed_for: plan.installed_for.as_deref(),
+                    force: plan.force,
+                };
+                let installed = install_single(
+                    ctx,
+                    &plan.name,
+                    &plan.version,
+                    &plan.formula,
+                    plan.bottle_plan,
+                    plan.runtime_deps,
+                    options,
+                )
+                .await?;
+                Ok((plan.name, installed))
+            }));
+        }
+
+        let Some(result) = futures.next().await else {
+            break;
         };
-        let installed = install_single(
-            &ctx,
-            &pkg_name,
-            &target_version,
-            formula,
-            runtime_deps,
-            options,
-        )
-        .await?;
+        let (pkg_name, installed): (String, InstalledPackage) = result?;
+        if pkg_name == name {
+            root_installed = Some(installed.clone());
+        }
+        if let Some(dependents) = dependents.get(&pkg_name) {
+            for dependent in dependents {
+                if let Some(count) = deps_remaining.get_mut(dependent) {
+                    *count = count.saturating_sub(1);
+                    if *count == 0 {
+                        ready.push_back(dependent.clone());
+                    }
+                }
+            }
+        }
+    }
 
-        installed_versions.insert(pkg_name.clone(), installed.version.clone());
+    if let Some(manager) = download_manager.as_mut() {
+        manager.wait_for_all(output).await?;
+    }
 
-        if is_root {
-            root_installed = Some(installed);
+    if let Ok(metrics) = ctx.metrics.lock() {
+        if metrics.installs > 0 {
+            output.debug(&format!(
+                "Install stage totals: materialize {}, relocate {}, codesign {}, total {}",
+                format_duration(metrics.materialize.as_secs()),
+                format_duration(metrics.relocate.as_secs()),
+                format_duration(metrics.codesign.as_secs()),
+                format_duration(metrics.total.as_secs())
+            ));
         }
     }
 
@@ -207,9 +404,10 @@ pub async fn install_from_lockfile(
     Ok(installed)
 }
 
-fn resolve_runtime_deps(
+fn resolve_runtime_deps_with_targets(
     formula: &Formula,
     installed_versions: &HashMap<String, String>,
+    target_versions: &HashMap<String, String>,
     cellar: &Cellar,
     paths: &Paths,
 ) -> Result<Vec<RuntimeDependency>> {
@@ -217,6 +415,8 @@ fn resolve_runtime_deps(
 
     for dep_name in &formula.dependencies {
         let version = if let Some(version) = installed_versions.get(dep_name) {
+            version.clone()
+        } else if let Some(version) = target_versions.get(dep_name) {
             version.clone()
         } else if let Some(version) = cellar.latest_version(dep_name)? {
             version
@@ -285,14 +485,541 @@ fn resolve_requested_version(
     }
 }
 
+#[derive(Clone)]
+struct BottlePlan {
+    tag: String,
+    file: BottleFile,
+}
+
+struct PrepareContext<'a> {
+    paths: &'a Paths,
+    cache: &'a Cache,
+    store: &'a Store,
+    ghcr: &'a GhcrClient,
+}
+
+struct DownloadContext<'a> {
+    prepare: PrepareContext<'a>,
+    download_semaphore: Arc<Semaphore>,
+    extract_semaphore: Arc<Semaphore>,
+}
+
+struct PrepareRequest<'a> {
+    formula: &'a Formula,
+    bottle_plan: &'a BottlePlan,
+    name: &'a str,
+    version: &'a str,
+    progress_bar: Option<ProgressBar>,
+}
+
+struct PrepareResult {
+    bytes_downloaded: u64,
+    download_duration: Duration,
+    extract_duration: Duration,
+    total_duration: Duration,
+    downloaded: bool,
+}
+
+fn resolve_bottle(formula: &Formula, platform: &Platform, package: &str) -> Result<BottlePlan> {
+    let bottle_tags = platform.bottle_tags();
+    let (bottle_tag, bottle_file) = formula
+        .bottle
+        .stable
+        .as_ref()
+        .and_then(|stable| stable.best_for_platform(&bottle_tags))
+        .ok_or_else(|| ColdbrewError::NoBottleAvailable {
+            package: package.to_string(),
+            platform: platform.bottle_tag(),
+        })?;
+    Ok(BottlePlan {
+        tag: bottle_tag,
+        file: bottle_file.clone(),
+    })
+}
+
+struct DownloadGroup {
+    sha256: String,
+    name: String,
+    version: String,
+    tag: String,
+    formula: Formula,
+    bottle_file: BottleFile,
+}
+
+struct DownloadResult {
+    name: String,
+    version: String,
+    bytes_downloaded: u64,
+    download_duration: Duration,
+    extract_duration: Duration,
+    total_duration: Duration,
+    downloaded: bool,
+}
+
+struct DownloadHandle {
+    handle: JoinHandle<Result<DownloadResult>>,
+}
+
+#[derive(Debug, Default)]
+struct InstallMetrics {
+    installs: usize,
+    materialize: Duration,
+    relocate: Duration,
+    codesign: Duration,
+    total: Duration,
+}
+
+#[derive(Clone)]
+struct InstallPlan {
+    name: String,
+    version: String,
+    formula: Formula,
+    bottle_plan: BottlePlan,
+    runtime_deps: Vec<RuntimeDependency>,
+    installed_as_dependency: bool,
+    installed_for: Option<String>,
+    force: bool,
+}
+
+struct DownloadManager {
+    handles: HashMap<String, DownloadHandle>,
+    progress: Option<Arc<DownloadProgress>>,
+    multi_progress: Option<MultiProgress>,
+    bytes_downloaded: u64,
+    download_duration: Duration,
+    extract_duration: Duration,
+}
+
+struct DownloadProgress {
+    bar: ProgressBar,
+    total: usize,
+    completed: AtomicUsize,
+}
+
+impl DownloadProgress {
+    fn new(total: usize, message: &str) -> Option<Arc<Self>> {
+        if total == 0 {
+            return None;
+        }
+
+        let bar = ProgressBar::new(total as u64);
+        bar.set_style(
+            ProgressStyle::default_bar()
+                .template("{msg} [{bar:40.cyan/blue}] {pos}/{len}")
+                .unwrap(),
+        );
+        bar.set_message(message.to_string());
+
+        Some(Arc::new(Self {
+            bar,
+            total,
+            completed: AtomicUsize::new(0),
+        }))
+    }
+
+    fn mark_complete(&self) {
+        let done = self.completed.fetch_add(1, Ordering::SeqCst) + 1;
+        self.bar.set_position(done as u64);
+        if done >= self.total {
+            self.bar.finish_and_clear();
+        }
+    }
+}
+
+impl DownloadManager {
+    #[allow(clippy::too_many_arguments)]
+    fn start(
+        cache: Arc<Cache>,
+        store: Arc<Store>,
+        ghcr: Arc<GhcrClient>,
+        groups: Vec<DownloadGroup>,
+        download_semaphore: Arc<Semaphore>,
+        extract_semaphore: Arc<Semaphore>,
+        per_bottle_progress: bool,
+        paths: Paths,
+        output: &Output,
+    ) -> Self {
+        let mut progress = DownloadProgress::new(groups.len(), "Downloading bottles");
+        let mut multi_progress = None;
+        let mut per_bottle_bars: HashMap<String, ProgressBar> = HashMap::new();
+        if per_bottle_progress && !groups.is_empty() {
+            progress = None;
+            let multi = MultiProgress::new();
+            let style = ProgressStyle::default_bar()
+                .template("{msg} [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec})")
+                .unwrap();
+            for group in &groups {
+                let bar = multi.add(ProgressBar::new(0));
+                bar.set_style(style.clone());
+                bar.set_message(format!("{} {}", group.name, group.version));
+                per_bottle_bars.insert(group.sha256.clone(), bar);
+            }
+            multi_progress = Some(multi);
+        }
+        let mut handles = HashMap::new();
+
+        for group in groups {
+            let sha256 = group.sha256.clone();
+            let cache = cache.clone();
+            let store = store.clone();
+            let ghcr = ghcr.clone();
+            let download_semaphore = download_semaphore.clone();
+            let extract_semaphore = extract_semaphore.clone();
+            let progress = progress.clone();
+            let paths = paths.clone();
+            let progress_bar = per_bottle_bars.get(&sha256).cloned();
+
+            let handle = tokio::spawn(async move {
+                let download_ctx = DownloadContext {
+                    prepare: PrepareContext {
+                        paths: &paths,
+                        cache: cache.as_ref(),
+                        store: store.as_ref(),
+                        ghcr: ghcr.as_ref(),
+                    },
+                    download_semaphore,
+                    extract_semaphore,
+                };
+                let result = download_group(download_ctx, group, progress_bar).await;
+                if let Some(progress) = progress.as_ref() {
+                    progress.mark_complete();
+                }
+                result
+            });
+
+            handles.insert(sha256, DownloadHandle { handle });
+        }
+
+        if handles.is_empty() {
+            output.debug("No downloads needed");
+        }
+
+        Self {
+            handles,
+            progress,
+            multi_progress,
+            bytes_downloaded: 0,
+            download_duration: Duration::ZERO,
+            extract_duration: Duration::ZERO,
+        }
+    }
+
+    async fn wait_for(&mut self, sha256: &str, output: &Output) -> Result<()> {
+        if let Some(handle) = self.handles.remove(sha256) {
+            let result = handle
+                .handle
+                .await
+                .map_err(|err| ColdbrewError::Other(err.to_string()))??;
+            self.record_result(&result, output);
+        }
+        Ok(())
+    }
+
+    async fn wait_for_all(&mut self, output: &Output) -> Result<()> {
+        let keys: Vec<String> = self.handles.keys().cloned().collect();
+        for key in keys {
+            self.wait_for(&key, output).await?;
+        }
+        if let Some(progress) = self.progress.as_ref() {
+            progress.bar.finish_and_clear();
+        }
+        let _ = self.multi_progress.take();
+        self.print_summary(output);
+        Ok(())
+    }
+
+    fn record_result(&mut self, result: &DownloadResult, output: &Output) {
+        if result.downloaded && result.bytes_downloaded > 0 {
+            output.debug(&format!(
+                "Downloaded {} {} ({}) in {}",
+                result.name,
+                result.version,
+                format_bytes(result.bytes_downloaded),
+                format_duration(result.download_duration.as_secs())
+            ));
+        }
+
+        if result.total_duration > Duration::ZERO {
+            output.debug(&format!(
+                "Prepared {} {} in {}",
+                result.name,
+                result.version,
+                format_duration(result.total_duration.as_secs())
+            ));
+        }
+
+        self.bytes_downloaded += result.bytes_downloaded;
+        self.download_duration += result.download_duration;
+        self.extract_duration += result.extract_duration;
+    }
+
+    fn print_summary(&self, output: &Output) {
+        if self.bytes_downloaded > 0 {
+            output.debug(&format!(
+                "Downloaded {} total in {}",
+                format_bytes(self.bytes_downloaded),
+                format_duration(self.download_duration.as_secs())
+            ));
+        }
+        if self.extract_duration > Duration::ZERO {
+            output.debug(&format!(
+                "Store extraction time {}",
+                format_duration(self.extract_duration.as_secs())
+            ));
+        }
+    }
+}
+
+fn plan_download_groups(
+    ctx: &InstallContext<'_>,
+    install_order: &[String],
+    formula_map: &HashMap<String, Formula>,
+    root: &str,
+    root_version: Option<&str>,
+    version_policy: VersionPolicy,
+    force: bool,
+) -> Result<Vec<DownloadGroup>> {
+    let mut groups: HashMap<String, DownloadGroup> = HashMap::new();
+
+    for pkg_name in install_order {
+        let formula = formula_map
+            .get(pkg_name)
+            .ok_or_else(|| ColdbrewError::PackageNotFound(pkg_name.clone()))?;
+        let is_root = pkg_name == root;
+
+        if !is_root && ctx.cellar.latest_version(pkg_name)?.is_some() {
+            continue;
+        }
+
+        let target_version = if is_root {
+            match root_version {
+                Some(requested) => {
+                    resolve_requested_version(pkg_name, requested, formula, version_policy)?
+                }
+                None => formula.version_with_revision(),
+            }
+        } else {
+            formula.version_with_revision()
+        };
+
+        if is_root && ctx.cellar.is_installed(pkg_name, &target_version) && !force {
+            return Err(ColdbrewError::PackageAlreadyInstalled {
+                name: pkg_name.clone(),
+                version: target_version.clone(),
+            });
+        }
+
+        let bottle_plan = resolve_bottle(formula, ctx.platform, pkg_name)?;
+
+        let sha256 = bottle_plan.file.sha256.clone();
+        if ctx.store.entry_exists(&sha256) {
+            continue;
+        }
+
+        if groups.contains_key(&sha256) {
+            continue;
+        }
+
+        groups.insert(
+            sha256.clone(),
+            DownloadGroup {
+                sha256,
+                name: pkg_name.clone(),
+                version: target_version.clone(),
+                tag: bottle_plan.tag.clone(),
+                formula: formula.clone(),
+                bottle_file: bottle_plan.file.clone(),
+            },
+        );
+    }
+
+    Ok(groups.into_values().collect())
+}
+
+async fn download_group(
+    ctx: DownloadContext<'_>,
+    group: DownloadGroup,
+    progress_bar: Option<ProgressBar>,
+) -> Result<DownloadResult> {
+    let bottle_plan = BottlePlan {
+        tag: group.tag.clone(),
+        file: group.bottle_file.clone(),
+    };
+
+    let prepare = prepare_bottle(
+        &ctx,
+        PrepareRequest {
+            formula: &group.formula,
+            bottle_plan: &bottle_plan,
+            name: &group.name,
+            version: &group.version,
+            progress_bar,
+        },
+    )
+    .await?;
+
+    Ok(DownloadResult {
+        name: group.name,
+        version: group.version,
+        bytes_downloaded: prepare.bytes_downloaded,
+        download_duration: prepare.download_duration,
+        extract_duration: prepare.extract_duration,
+        total_duration: prepare.total_duration,
+        downloaded: prepare.downloaded,
+    })
+}
+
+async fn prepare_bottle(
+    ctx: &DownloadContext<'_>,
+    request: PrepareRequest<'_>,
+) -> Result<PrepareResult> {
+    let start = Instant::now();
+    let mut download_duration = Duration::ZERO;
+    let mut extract_duration = Duration::ZERO;
+    let mut bytes_downloaded = 0;
+    let mut downloaded = false;
+
+    let PrepareRequest {
+        formula,
+        bottle_plan,
+        name,
+        version,
+        progress_bar,
+    } = request;
+    let prepare = &ctx.prepare;
+    let sha256 = &bottle_plan.file.sha256;
+
+    for attempt in 1..=2 {
+        let dest = prepare.cache.blob_path(sha256);
+        if !dest.exists() {
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            let temp_path = prepare.cache.blob_temp_path(sha256);
+            if temp_path.exists() {
+                let _ = fs::remove_file(&temp_path);
+            }
+
+            let downloaded_bytes = Arc::new(AtomicU64::new(0));
+            let downloaded_bytes_clone = downloaded_bytes.clone();
+            let _permit = ctx
+                .download_semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .map_err(|err| {
+                    ColdbrewError::Other(format!("Failed to acquire download slot: {}", err))
+                })?;
+            let download_start = Instant::now();
+            let progress_bar_callback = progress_bar.clone();
+            prepare
+                .ghcr
+                .download_bottle(
+                    formula,
+                    &bottle_plan.file,
+                    &temp_path,
+                    |downloaded, total| {
+                        if let Some(bar) = progress_bar_callback.as_ref() {
+                            if total > 0 {
+                                bar.set_length(total);
+                            }
+                            bar.set_position(downloaded);
+                        }
+                        downloaded_bytes_clone.store(downloaded, Ordering::Relaxed);
+                    },
+                )
+                .await?;
+            if let Some(bar) = progress_bar.as_ref() {
+                bar.finish_and_clear();
+            }
+            fs::rename(&temp_path, &dest)?;
+            let reported = downloaded_bytes.load(Ordering::Relaxed);
+            let size = dest.metadata().map(|meta| meta.len()).unwrap_or(0);
+            let size = if reported > 0 { reported } else { size };
+            prepare.cache.record_blob_metadata(
+                sha256,
+                Some(name),
+                Some(version),
+                Some(&bottle_plan.tag),
+                size,
+            )?;
+
+            downloaded = true;
+            download_duration += download_start.elapsed();
+            bytes_downloaded = bytes_downloaded.max(size);
+        } else {
+            let size = dest.metadata().map(|meta| meta.len()).unwrap_or(0);
+            prepare.cache.record_blob_metadata(
+                sha256,
+                Some(name),
+                Some(version),
+                Some(&bottle_plan.tag),
+                size,
+            )?;
+            if let Some(bar) = progress_bar.as_ref() {
+                bar.finish_and_clear();
+            }
+        }
+
+        if let Err(err) = verify::verify_bottle(&dest, sha256, name) {
+            if attempt < 2 {
+                prepare.cache.remove(sha256)?;
+                continue;
+            }
+            return Err(err);
+        }
+
+        let extract_start = Instant::now();
+        let entry = {
+            let _permit = ctx
+                .extract_semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .map_err(|err| {
+                    ColdbrewError::Other(format!("Failed to acquire extraction slot: {}", err))
+                })?;
+            prepare.store.ensure_entry(sha256, &dest)
+        };
+        match entry {
+            Ok(entry) => {
+                extract_duration += extract_start.elapsed();
+                let db = Database::new(prepare.paths.clone());
+                let conn = db.connect()?;
+                db.upsert_store_entry(&conn, sha256, entry.size_bytes)?;
+                break;
+            }
+            Err(err) => {
+                if attempt < 2 {
+                    prepare.cache.remove(sha256)?;
+                    continue;
+                }
+                return Err(err);
+            }
+        }
+    }
+
+    Ok(PrepareResult {
+        bytes_downloaded,
+        download_duration,
+        extract_duration,
+        total_duration: start.elapsed(),
+        downloaded,
+    })
+}
 async fn install_single(
     ctx: &InstallContext<'_>,
     name: &str,
     version: &str,
     formula: &Formula,
+    bottle_plan: BottlePlan,
     runtime_deps: Vec<RuntimeDependency>,
     options: InstallOptions<'_>,
 ) -> Result<InstalledPackage> {
+    let install_start = Instant::now();
+    let mut relocate_duration = Duration::ZERO;
+    let mut codesign_duration = Duration::ZERO;
     if ctx.cellar.is_installed(name, version) && !options.force {
         return Err(ColdbrewError::PackageAlreadyInstalled {
             name: name.to_string(),
@@ -300,58 +1027,72 @@ async fn install_single(
         });
     }
 
-    let bottle_tags = ctx.platform.bottle_tags();
-    let (bottle_tag, bottle_file) = formula
-        .bottle
-        .stable
-        .as_ref()
-        .and_then(|stable| stable.best_for_platform(&bottle_tags))
-        .ok_or_else(|| ColdbrewError::NoBottleAvailable {
-            package: name.to_string(),
-            platform: ctx.platform.bottle_tag(),
-        })?;
-
     ctx.output
-        .debug(&format!("Using bottle tag: {}", bottle_tag));
+        .debug(&format!("Using bottle tag: {}", bottle_plan.tag));
 
-    let bottle_path = if let Some(cached) = ctx.cache.get_cached(name, version, &bottle_tag) {
-        ctx.output.debug("Using cached bottle");
-        cached
-    } else {
-        ctx.output.debug("Downloading bottle...");
-        let download_path = ctx
-            .paths
-            .downloads_dir()
-            .join(format!("{}-{}.{}.bottle.tar.gz", name, version, bottle_tag));
+    if !ctx.store.entry_exists(&bottle_plan.file.sha256) {
+        ctx.output.debug("Preparing bottle for store...");
+        let download_ctx = DownloadContext {
+            prepare: PrepareContext {
+                paths: ctx.paths,
+                cache: ctx.cache,
+                store: ctx.store,
+                ghcr: ctx.ghcr,
+            },
+            download_semaphore: ctx.download_semaphore.clone(),
+            extract_semaphore: ctx.extract_semaphore.clone(),
+        };
+        let prepare = prepare_bottle(
+            &download_ctx,
+            PrepareRequest {
+                formula,
+                bottle_plan: &bottle_plan,
+                name,
+                version,
+                progress_bar: None,
+            },
+        )
+        .await?;
 
-        std::fs::create_dir_all(ctx.paths.downloads_dir())?;
+        if prepare.downloaded && prepare.bytes_downloaded > 0 {
+            ctx.output.debug(&format!(
+                "Downloaded {} {} ({}) in {}",
+                name,
+                version,
+                format_bytes(prepare.bytes_downloaded),
+                format_duration(prepare.download_duration.as_secs())
+            ));
+        }
 
-        let pb = ctx
-            .output
-            .download_progress(0, &format!("Downloading {}", name));
+        if prepare.extract_duration > Duration::ZERO {
+            ctx.output.debug(&format!(
+                "Prepared store entry in {}",
+                format_duration(prepare.extract_duration.as_secs())
+            ));
+        }
+    }
 
-        ctx.ghcr
-            .download_bottle(formula, bottle_file, &download_path, |downloaded, total| {
-                if total > 0 {
-                    pb.set_length(total);
-                }
-                pb.set_position(downloaded);
-            })
-            .await?;
+    let materialize_start = Instant::now();
+    ctx.output.debug("Materializing to cellar...");
+    let install_path = ctx
+        .store
+        .materialize(&bottle_plan.file.sha256, name, version)?;
+    let materialize_duration = materialize_start.elapsed();
+    ctx.output.debug(&format!(
+        "Materialized {} in {}",
+        name,
+        format_duration(materialize_duration.as_secs())
+    ));
 
-        pb.finish_and_clear();
-
-        download_path
-    };
-
-    ctx.output.debug("Verifying checksum...");
-    verify::verify_bottle(&bottle_path, &bottle_file.sha256, name)?;
-
-    ctx.output.debug("Extracting to cellar...");
-    let install_path = ctx.cellar.install(name, version, &bottle_path)?;
+    let db = Database::new(ctx.paths.clone());
+    let conn = db.connect()?;
+    let store_size = ctx.store.entry_size(&bottle_plan.file.sha256)?;
+    db.upsert_store_entry(&conn, &bottle_plan.file.sha256, store_size)?;
+    db.add_store_ref(&conn, &bottle_plan.file.sha256, name, version)?;
 
     if ctx.platform.os == Os::MacOS {
         ctx.output.debug("Relocating bottle...");
+        let relocate_start = Instant::now();
         let summary =
             match relocate::relocate_bottle(&install_path, ctx.paths, ctx.platform, ctx.output) {
                 Ok(summary) => summary,
@@ -360,17 +1101,28 @@ async fn install_single(
                     return Err(err);
                 }
             };
+        relocate_duration = relocate_start.elapsed();
         if summary.relocated_files > 0 {
             ctx.output.debug(&format!(
                 "Relocated {} Mach-O files",
                 summary.relocated_files
             ));
             ctx.output.debug("Codesigning Mach-O files...");
+            let codesign_start = Instant::now();
+            let _permit = ctx
+                .codesign_semaphore
+                .clone()
+                .acquire_owned()
+                .await
+                .map_err(|err| {
+                    ColdbrewError::Other(format!("Failed to acquire codesign slot: {}", err))
+                })?;
             if let Err(err) = relocate::codesign_macho_tree(&install_path, ctx.platform, ctx.output)
             {
                 cleanup_failed_install(ctx, name, version);
                 return Err(err);
             }
+            codesign_duration = codesign_start.elapsed();
         }
     }
 
@@ -381,8 +1133,8 @@ async fn install_single(
         install_path,
     );
     installed.runtime_dependencies = runtime_deps;
-    installed.bottle_tag = Some(bottle_tag);
-    installed.bottle_sha256 = Some(bottle_file.sha256.clone());
+    installed.bottle_tag = Some(bottle_plan.tag);
+    installed.bottle_sha256 = Some(bottle_plan.file.sha256.clone());
     installed.keg_only = formula.keg_only;
     installed.caveats = formula.caveats.clone();
     installed.installed_as_dependency = options.installed_as_dependency;
@@ -400,8 +1152,23 @@ async fn install_single(
         installed.linked = true;
     }
 
-    let metadata = PackageMetadata::new(installed.clone(), bottle_file.url.clone());
+    let metadata = PackageMetadata::new(installed.clone(), bottle_plan.file.url.clone());
     ctx.cellar.save_metadata(&metadata)?;
+
+    let total_duration = install_start.elapsed();
+    if let Ok(mut metrics) = ctx.metrics.lock() {
+        metrics.installs += 1;
+        metrics.materialize += materialize_duration;
+        metrics.relocate += relocate_duration;
+        metrics.codesign += codesign_duration;
+        metrics.total += total_duration;
+    }
+    ctx.output.debug(&format!(
+        "Installed {} {} in {}",
+        name,
+        version,
+        format_duration(total_duration.as_secs())
+    ));
 
     Ok(installed)
 }

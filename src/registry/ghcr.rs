@@ -10,6 +10,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
+use tokio::task::JoinSet;
 
 const GHCR_TOKEN_URL: &str = "https://ghcr.io/token";
 
@@ -17,6 +18,7 @@ const GHCR_TOKEN_URL: &str = "https://ghcr.io/token";
 pub struct GhcrClient {
     client: Client,
     token_cache: Arc<RwLock<Option<TokenCache>>>,
+    cdn_racing: bool,
 }
 
 #[derive(Clone)]
@@ -35,13 +37,24 @@ struct TokenResponse {
 impl GhcrClient {
     /// Create a new GHCR client
     pub fn new() -> Result<Self> {
+        Self::new_with_options(false)
+    }
+
+    /// Create a new GHCR client with options
+    pub fn new_with_options(cdn_racing: bool) -> Result<Self> {
         let client = Client::builder()
             .timeout(Duration::from_secs(300))
+            .connect_timeout(Duration::from_secs(20))
+            .pool_max_idle_per_host(10)
+            .pool_idle_timeout(Duration::from_secs(90))
+            .http2_adaptive_window(true)
+            .tcp_nodelay(true)
             .build()?;
 
         Ok(Self {
             client,
             token_cache: Arc::new(RwLock::new(None)),
+            cdn_racing,
         })
     }
 
@@ -123,7 +136,7 @@ impl GhcrClient {
     /// Download a bottle to a file
     pub async fn download_bottle<F>(
         &self,
-        _formula: &Formula,
+        formula: &Formula,
         bottle_file: &BottleFile,
         dest: &Path,
         progress_callback: F,
@@ -133,13 +146,23 @@ impl GhcrClient {
     {
         let mut refreshed = false;
         let repository = Self::repository_from_url(&bottle_file.url)?;
+        let candidates = self.build_candidate_urls(formula, bottle_file);
 
         loop {
             let token = self.get_token(&repository).await?;
 
+            let download_url = if self.cdn_racing && candidates.len() > 1 {
+                self.pick_fastest_url(&token, &candidates).await?
+            } else {
+                candidates
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| bottle_file.url.clone())
+            };
+
             let response = self
                 .client
-                .get(&bottle_file.url)
+                .get(&download_url)
                 .header("Authorization", format!("Bearer {}", token))
                 .send()
                 .await?;
@@ -182,15 +205,25 @@ impl GhcrClient {
     /// Download a bottle and return the bytes
     pub async fn download_bottle_bytes(
         &self,
-        _formula: &Formula,
+        formula: &Formula,
         bottle_file: &BottleFile,
     ) -> Result<Vec<u8>> {
         let repository = Self::repository_from_url(&bottle_file.url)?;
         let token = self.get_token(&repository).await?;
 
+        let candidates = self.build_candidate_urls(formula, bottle_file);
+        let download_url = if self.cdn_racing && candidates.len() > 1 {
+            self.pick_fastest_url(&token, &candidates).await?
+        } else {
+            candidates
+                .first()
+                .cloned()
+                .unwrap_or_else(|| bottle_file.url.clone())
+        };
+
         let response = self
             .client
-            .get(&bottle_file.url)
+            .get(&download_url)
             .header("Authorization", format!("Bearer {}", token))
             .send()
             .await?;
@@ -204,6 +237,68 @@ impl GhcrClient {
 
         let bytes = response.bytes().await?;
         Ok(bytes.to_vec())
+    }
+
+    fn build_candidate_urls(&self, formula: &Formula, bottle_file: &BottleFile) -> Vec<String> {
+        let mut candidates = vec![bottle_file.url.clone()];
+        if self.cdn_racing {
+            let ghcr_url = bottle_file.ghcr_url(&formula.name, &formula.versions.stable, "");
+            if !candidates.contains(&ghcr_url) {
+                candidates.push(ghcr_url);
+            }
+        }
+        candidates
+    }
+
+    async fn pick_fastest_url(&self, token: &str, candidates: &[String]) -> Result<String> {
+        if candidates.len() <= 1 {
+            return Ok(candidates
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "".to_string()));
+        }
+
+        let mut set = JoinSet::new();
+        for url in candidates.iter().cloned() {
+            let client = self.client.clone();
+            let token = token.to_string();
+            set.spawn(async move {
+                let response = client
+                    .head(&url)
+                    .header("Authorization", format!("Bearer {}", token))
+                    .send()
+                    .await?;
+
+                if response.status().is_success() {
+                    Ok(url)
+                } else {
+                    Err(ColdbrewError::DownloadFailed(format!(
+                        "CDN probe failed: {}",
+                        response.status()
+                    )))
+                }
+            });
+        }
+
+        let mut last_error = None;
+        while let Some(result) = set.join_next().await {
+            match result {
+                Ok(Ok(url)) => {
+                    set.abort_all();
+                    return Ok(url);
+                }
+                Ok(Err(err)) => last_error = Some(err),
+                Err(err) => {
+                    last_error = Some(ColdbrewError::Other(format!(
+                        "CDN probe join error: {}",
+                        err
+                    )))
+                }
+            }
+        }
+
+        Err(last_error
+            .unwrap_or_else(|| ColdbrewError::DownloadFailed("CDN probe failed".to_string())))
     }
 }
 
