@@ -156,6 +156,20 @@ impl Drop for StoreLock {
 fn extract_bottle(bottle_path: &Path, target_dir: &Path) -> Result<()> {
     use flate2::read::GzDecoder;
     use tar::Archive;
+    fn strip_components(path: &Path, skip: usize) -> Result<PathBuf> {
+        let mut relative_path = PathBuf::new();
+        let mut skipped = 0;
+
+        for component in path.components() {
+            if skipped < skip {
+                skipped += 1;
+                continue;
+            }
+            relative_path.push(component);
+        }
+
+        Ok(relative_path)
+    }
 
     let file = fs::File::open(bottle_path)
         .map_err(|err| ColdbrewError::ExtractionFailed(err.to_string()))?;
@@ -166,25 +180,71 @@ fn extract_bottle(bottle_path: &Path, target_dir: &Path) -> Result<()> {
         .entries()
         .map_err(|err| ColdbrewError::ExtractionFailed(err.to_string()))?;
 
+    let mut pending_links: Vec<(PathBuf, PathBuf)> = Vec::new();
+
     for entry in entries {
         let mut entry = entry.map_err(|err| ColdbrewError::ExtractionFailed(err.to_string()))?;
         let path = entry
             .path()
             .map_err(|err| ColdbrewError::ExtractionFailed(err.to_string()))?;
-        let path_components: Vec<_> = path.components().collect();
+        let relative_path = strip_components(&path, 2)?;
 
-        if path_components.len() > 2 {
-            let relative_path: PathBuf = path_components[2..].iter().collect();
-            let dest = target_dir.join(&relative_path);
-
-            if let Some(parent) = dest.parent() {
-                fs::create_dir_all(parent)?;
-            }
-
-            entry
-                .unpack(&dest)
-                .map_err(|err| ColdbrewError::ExtractionFailed(err.to_string()))?;
+        if relative_path.as_os_str().is_empty() {
+            continue;
         }
+
+        let dest = target_dir.join(&relative_path);
+
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        if entry.header().entry_type().is_hard_link() {
+            let link_name = entry
+                .link_name()
+                .map_err(|err| ColdbrewError::ExtractionFailed(err.to_string()))?
+                .ok_or_else(|| {
+                    ColdbrewError::ExtractionFailed("Hard link missing target".to_string())
+                })?;
+            let link_relative = strip_components(&link_name, 2)?;
+            if link_relative.as_os_str().is_empty() {
+                return Err(ColdbrewError::ExtractionFailed(
+                    "Hard link target is empty".to_string(),
+                ));
+            }
+            let link_target = target_dir.join(&link_relative);
+            if dest.exists() {
+                continue;
+            }
+            if link_target.exists() {
+                fs::hard_link(&link_target, &dest)
+                    .map_err(|err| ColdbrewError::ExtractionFailed(err.to_string()))?;
+            } else {
+                pending_links.push((dest, link_target));
+            }
+            continue;
+        }
+
+        entry
+            .unpack(&dest)
+            .map_err(|err| ColdbrewError::ExtractionFailed(err.to_string()))?;
+    }
+
+    for (dest, link_target) in pending_links {
+        if dest.exists() {
+            continue;
+        }
+        if !link_target.exists() {
+            return Err(ColdbrewError::ExtractionFailed(format!(
+                "Hard link target missing: {}",
+                link_target.display()
+            )));
+        }
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::hard_link(&link_target, &dest)
+            .map_err(|err| ColdbrewError::ExtractionFailed(err.to_string()))?;
     }
 
     Ok(())
