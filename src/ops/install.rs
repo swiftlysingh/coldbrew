@@ -869,7 +869,10 @@ async fn download_group(
     })
 }
 
-async fn prepare_bottle(ctx: &DownloadContext<'_>, request: PrepareRequest<'_>) -> Result<PrepareResult> {
+async fn prepare_bottle(
+    ctx: &DownloadContext<'_>,
+    request: PrepareRequest<'_>,
+) -> Result<PrepareResult> {
     let start = Instant::now();
     let mut download_duration = Duration::ZERO;
     let mut extract_duration = Duration::ZERO;
