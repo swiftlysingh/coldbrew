@@ -286,7 +286,7 @@ async fn install_with_policy(
         }
     }
 
-    let install_limit = config.settings.parallel_extractions.max(1);
+    let install_limit = config.settings.parallel_installs.max(1);
     let mut in_flight = 0usize;
     let mut futures: FuturesUnordered<BoxFuture<'_, Result<(String, InstalledPackage)>>> =
         FuturesUnordered::new();

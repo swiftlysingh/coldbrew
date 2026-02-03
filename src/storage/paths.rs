@@ -169,6 +169,11 @@ impl Paths {
         self.locks_dir().join(format!("{}.lock", sha256))
     }
 
+    /// Global lock for shim writes
+    pub fn shims_lock(&self) -> PathBuf {
+        self.locks_dir().join("shims.lock")
+    }
+
     /// Get the shim path for a binary
     /// e.g., ~/.coldbrew/bin/jq
     pub fn shim(&self, name: &str) -> PathBuf {
