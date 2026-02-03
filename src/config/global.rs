@@ -41,6 +41,10 @@ pub struct Settings {
     #[serde(default = "default_parallel_codesigning")]
     pub parallel_codesigning: usize,
 
+    /// Number of parallel installs
+    #[serde(default = "default_parallel_installs")]
+    pub parallel_installs: usize,
+
     /// Keep old versions (default: 2)
     #[serde(default = "default_keep_versions")]
     pub keep_versions: usize,
@@ -83,6 +87,15 @@ fn default_parallel_codesigning() -> usize {
         .unwrap_or(2)
 }
 
+fn default_parallel_installs() -> usize {
+    std::thread::available_parallelism()
+        .map(|count| {
+            let cpus = count.get();
+            cpus.saturating_sub(1).max(1).min(4)
+        })
+        .unwrap_or(2)
+}
+
 fn default_keep_versions() -> usize {
     2
 }
@@ -94,6 +107,7 @@ impl Default for Settings {
             parallel_downloads: default_parallel_downloads(),
             parallel_extractions: default_parallel_extractions(),
             parallel_codesigning: default_parallel_codesigning(),
+            parallel_installs: default_parallel_installs(),
             keep_versions: 2,
             analytics: false,
             cdn_racing: false,
@@ -184,6 +198,8 @@ mod tests {
         assert!(config.settings.parallel_extractions <= 4);
         assert!(config.settings.parallel_codesigning >= 1);
         assert!(config.settings.parallel_codesigning <= 4);
+        assert!(config.settings.parallel_installs >= 1);
+        assert!(config.settings.parallel_installs <= 4);
     }
 
     #[test]

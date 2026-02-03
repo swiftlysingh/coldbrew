@@ -39,10 +39,10 @@ Last updated: January 28, 2026
 - GHCR token is cached per package in memory (no persistent cache).
 
 ### Concurrency
-- Config has `parallel_downloads`, `parallel_extractions`, and `parallel_codesigning`.
+- Config has `parallel_downloads`, `parallel_extractions`, `parallel_codesigning`, and `parallel_installs`.
 - Download tasks do download -> verify; extraction is bounded separately.
 - Codesigning is bounded during install (macOS only).
-- Install steps can overlap across packages (bounded by extraction concurrency).
+- Install steps can overlap across packages (bounded by install concurrency).
 - Dependency resolution and formula loading are serial.
 
 ### Storage Model
