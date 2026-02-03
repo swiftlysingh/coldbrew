@@ -67,6 +67,18 @@ crew lock    # Generate lockfile
 crew install # Install from lockfile
 ```
 
+## Global Configuration
+
+Global settings live in `~/.coldbrew/config.toml`. Example:
+
+```toml
+[settings]
+parallel_downloads = 8      # min(cpus * 2, 16)
+parallel_extractions = 3    # min(cpus - 1, 4)
+parallel_codesigning = 2    # min(cpus, 4)
+parallel_installs = 3       # min(cpus - 1, 4)
+```
+
 ## Commands
 
 | Command | Description |
