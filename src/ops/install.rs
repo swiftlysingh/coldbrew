@@ -498,6 +498,20 @@ struct PrepareContext<'a> {
     ghcr: &'a GhcrClient,
 }
 
+struct DownloadContext<'a> {
+    prepare: PrepareContext<'a>,
+    download_semaphore: Arc<Semaphore>,
+    extract_semaphore: Arc<Semaphore>,
+}
+
+struct PrepareRequest<'a> {
+    formula: &'a Formula,
+    bottle_plan: &'a BottlePlan,
+    name: &'a str,
+    version: &'a str,
+    progress_bar: Option<ProgressBar>,
+}
+
 struct PrepareResult {
     bytes_downloaded: u64,
     download_duration: Duration,
@@ -656,17 +670,17 @@ impl DownloadManager {
             let progress_bar = per_bottle_bars.get(&sha256).cloned();
 
             let handle = tokio::spawn(async move {
-                let result = download_group(
-                    &paths,
-                    ghcr.as_ref(),
-                    cache.as_ref(),
-                    store.as_ref(),
+                let download_ctx = DownloadContext {
+                    prepare: PrepareContext {
+                        paths: &paths,
+                        cache: cache.as_ref(),
+                        store: store.as_ref(),
+                        ghcr: ghcr.as_ref(),
+                    },
                     download_semaphore,
                     extract_semaphore,
-                    progress_bar,
-                    group,
-                )
-                .await;
+                };
+                let result = download_group(download_ctx, group, progress_bar).await;
                 if let Some(progress) = progress.as_ref() {
                     progress.mark_complete();
                 }
@@ -823,36 +837,24 @@ fn plan_download_groups(
 }
 
 async fn download_group(
-    paths: &Paths,
-    ghcr: &GhcrClient,
-    cache: &Cache,
-    store: &Store,
-    download_semaphore: Arc<Semaphore>,
-    extract_semaphore: Arc<Semaphore>,
-    progress_bar: Option<ProgressBar>,
+    ctx: DownloadContext<'_>,
     group: DownloadGroup,
+    progress_bar: Option<ProgressBar>,
 ) -> Result<DownloadResult> {
     let bottle_plan = BottlePlan {
         tag: group.tag.clone(),
         file: group.bottle_file.clone(),
     };
 
-    let prepare_ctx = PrepareContext {
-        paths,
-        cache,
-        store,
-        ghcr,
-    };
-
     let prepare = prepare_bottle(
-        &prepare_ctx,
-        &group.formula,
-        &bottle_plan,
-        &group.name,
-        &group.version,
-        download_semaphore,
-        extract_semaphore,
-        progress_bar,
+        &ctx,
+        PrepareRequest {
+            formula: &group.formula,
+            bottle_plan: &bottle_plan,
+            name: &group.name,
+            version: &group.version,
+            progress_bar,
+        },
     )
     .await?;
 
@@ -867,39 +869,39 @@ async fn download_group(
     })
 }
 
-async fn prepare_bottle(
-    ctx: &PrepareContext<'_>,
-    formula: &Formula,
-    bottle_plan: &BottlePlan,
-    name: &str,
-    version: &str,
-    download_semaphore: Arc<Semaphore>,
-    extract_semaphore: Arc<Semaphore>,
-    progress_bar: Option<ProgressBar>,
-) -> Result<PrepareResult> {
+async fn prepare_bottle(ctx: &DownloadContext<'_>, request: PrepareRequest<'_>) -> Result<PrepareResult> {
     let start = Instant::now();
     let mut download_duration = Duration::ZERO;
     let mut extract_duration = Duration::ZERO;
     let mut bytes_downloaded = 0;
     let mut downloaded = false;
 
+    let PrepareRequest {
+        formula,
+        bottle_plan,
+        name,
+        version,
+        progress_bar,
+    } = request;
+    let prepare = &ctx.prepare;
     let sha256 = &bottle_plan.file.sha256;
 
     for attempt in 1..=2 {
-        let dest = ctx.cache.blob_path(sha256);
+        let dest = prepare.cache.blob_path(sha256);
         if !dest.exists() {
             if let Some(parent) = dest.parent() {
                 fs::create_dir_all(parent)?;
             }
 
-            let temp_path = ctx.cache.blob_temp_path(sha256);
+            let temp_path = prepare.cache.blob_temp_path(sha256);
             if temp_path.exists() {
                 let _ = fs::remove_file(&temp_path);
             }
 
             let downloaded_bytes = Arc::new(AtomicU64::new(0));
             let downloaded_bytes_clone = downloaded_bytes.clone();
-            let _permit = download_semaphore
+            let _permit = ctx
+                .download_semaphore
                 .clone()
                 .acquire_owned()
                 .await
@@ -908,7 +910,8 @@ async fn prepare_bottle(
                 })?;
             let download_start = Instant::now();
             let progress_bar_callback = progress_bar.clone();
-            ctx.ghcr
+            prepare
+                .ghcr
                 .download_bottle(
                     formula,
                     &bottle_plan.file,
@@ -931,7 +934,7 @@ async fn prepare_bottle(
             let reported = downloaded_bytes.load(Ordering::Relaxed);
             let size = dest.metadata().map(|meta| meta.len()).unwrap_or(0);
             let size = if reported > 0 { reported } else { size };
-            ctx.cache.record_blob_metadata(
+            prepare.cache.record_blob_metadata(
                 sha256,
                 Some(name),
                 Some(version),
@@ -944,7 +947,7 @@ async fn prepare_bottle(
             bytes_downloaded = bytes_downloaded.max(size);
         } else {
             let size = dest.metadata().map(|meta| meta.len()).unwrap_or(0);
-            ctx.cache.record_blob_metadata(
+            prepare.cache.record_blob_metadata(
                 sha256,
                 Some(name),
                 Some(version),
@@ -958,7 +961,7 @@ async fn prepare_bottle(
 
         if let Err(err) = verify::verify_bottle(&dest, sha256, name) {
             if attempt < 2 {
-                ctx.cache.remove(sha256)?;
+                prepare.cache.remove(sha256)?;
                 continue;
             }
             return Err(err);
@@ -966,26 +969,27 @@ async fn prepare_bottle(
 
         let extract_start = Instant::now();
         let entry = {
-            let _permit = extract_semaphore
+            let _permit = ctx
+                .extract_semaphore
                 .clone()
                 .acquire_owned()
                 .await
                 .map_err(|err| {
                     ColdbrewError::Other(format!("Failed to acquire extraction slot: {}", err))
                 })?;
-            ctx.store.ensure_entry(sha256, &dest)
+            prepare.store.ensure_entry(sha256, &dest)
         };
         match entry {
             Ok(entry) => {
                 extract_duration += extract_start.elapsed();
-                let db = Database::new(ctx.paths.clone());
+                let db = Database::new(prepare.paths.clone());
                 let conn = db.connect()?;
                 db.upsert_store_entry(&conn, sha256, entry.size_bytes)?;
                 break;
             }
             Err(err) => {
                 if attempt < 2 {
-                    ctx.cache.remove(sha256)?;
+                    prepare.cache.remove(sha256)?;
                     continue;
                 }
                 return Err(err);
@@ -1025,21 +1029,25 @@ async fn install_single(
 
     if !ctx.store.entry_exists(&bottle_plan.file.sha256) {
         ctx.output.debug("Preparing bottle for store...");
-        let prepare_ctx = PrepareContext {
-            paths: ctx.paths,
-            cache: ctx.cache,
-            store: ctx.store,
-            ghcr: ctx.ghcr,
+        let download_ctx = DownloadContext {
+            prepare: PrepareContext {
+                paths: ctx.paths,
+                cache: ctx.cache,
+                store: ctx.store,
+                ghcr: ctx.ghcr,
+            },
+            download_semaphore: ctx.download_semaphore.clone(),
+            extract_semaphore: ctx.extract_semaphore.clone(),
         };
         let prepare = prepare_bottle(
-            &prepare_ctx,
-            formula,
-            &bottle_plan,
-            name,
-            version,
-            ctx.download_semaphore.clone(),
-            ctx.extract_semaphore.clone(),
-            None,
+            &download_ctx,
+            PrepareRequest {
+                formula,
+                bottle_plan: &bottle_plan,
+                name,
+                version,
+                progress_bar: None,
+            },
         )
         .await?;
 
