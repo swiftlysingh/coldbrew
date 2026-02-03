@@ -170,15 +170,8 @@ pub async fn migrate(
                 Output::version(installed_version)
             ));
 
-            match ops::install::install(
-                paths,
-                &name,
-                Some(installed_version),
-                false,
-                false,
-                output,
-            )
-            .await
+            match ops::install::install(paths, &name, Some(installed_version), false, false, output)
+                .await
             {
                 Ok(_) => {
                     summary.migrated.push(MigratedFormula {
@@ -249,9 +242,7 @@ pub async fn migrate(
                 }
             };
 
-        let deps_for_install = receipt_deps
-            .as_ref()
-            .unwrap_or(&formula.dependencies);
+        let deps_for_install = receipt_deps.as_ref().unwrap_or(&formula.dependencies);
 
         let installed_versions = match ops::install::install_dependencies_for_root_with_list(
             paths,
@@ -324,9 +315,7 @@ async fn brew_path(brew: &Path, args: &[&str], label: &str) -> Result<PathBuf> {
         .lines()
         .map(str::trim)
         .find(|line| !line.is_empty())
-        .ok_or_else(|| {
-            ColdbrewError::Other(format!("Homebrew returned empty {} path", label))
-        })?;
+        .ok_or_else(|| ColdbrewError::Other(format!("Homebrew returned empty {} path", label)))?;
 
     Ok(PathBuf::from(path))
 }
@@ -380,7 +369,10 @@ fn read_keg_receipt_dependencies(
 
     let mut deps = Vec::new();
 
-    if let Some(runtime) = receipt.get("runtime_dependencies").and_then(|v| v.as_array()) {
+    if let Some(runtime) = receipt
+        .get("runtime_dependencies")
+        .and_then(|v| v.as_array())
+    {
         for dep in runtime {
             if let Some(dep_name) = dep
                 .get("full_name")
