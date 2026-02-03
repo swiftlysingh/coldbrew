@@ -4,6 +4,7 @@ use crate::cli::output::Output;
 use crate::core::platform::{Os, Platform};
 use crate::error::{ColdbrewError, Result};
 use crate::storage::Paths;
+use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
@@ -12,6 +13,7 @@ use walkdir::WalkDir;
 
 const HOMEBREW_CELLAR_PLACEHOLDER: &str = "@@HOMEBREW_CELLAR@@";
 const HOMEBREW_PREFIX_PLACEHOLDER: &str = "@@HOMEBREW_PREFIX@@";
+const MAX_TEXT_REWRITE_SIZE: u64 = 2 * 1024 * 1024;
 
 #[derive(Debug, Default)]
 pub struct RelocationSummary {
@@ -22,7 +24,7 @@ pub struct RelocationSummary {
 }
 
 struct Replacement {
-    placeholder: &'static str,
+    placeholder: String,
     value: String,
 }
 
@@ -58,11 +60,11 @@ pub fn relocate_bottle(
 
     let replacements = vec![
         Replacement {
-            placeholder: HOMEBREW_CELLAR_PLACEHOLDER,
+            placeholder: HOMEBREW_CELLAR_PLACEHOLDER.to_string(),
             value: paths.cellar_dir().to_string_lossy().to_string(),
         },
         Replacement {
-            placeholder: HOMEBREW_PREFIX_PLACEHOLDER,
+            placeholder: HOMEBREW_PREFIX_PLACEHOLDER.to_string(),
             value: paths.root().to_string_lossy().to_string(),
         },
     ];
@@ -109,6 +111,55 @@ pub fn relocate_bottle(
     Ok(summary)
 }
 
+pub fn relocate_keg(
+    install_path: &Path,
+    brew_cellar: &Path,
+    brew_prefix: &Path,
+    paths: &Paths,
+    platform: &Platform,
+    _output: &Output,
+) -> Result<RelocationSummary> {
+    let mut summary = RelocationSummary::default();
+
+    if platform.os != Os::MacOS {
+        return Ok(summary);
+    }
+
+    let replacements = vec![
+        Replacement {
+            placeholder: brew_cellar.to_string_lossy().to_string(),
+            value: paths.cellar_dir().to_string_lossy().to_string(),
+        },
+        Replacement {
+            placeholder: brew_prefix.to_string_lossy().to_string(),
+            value: paths.root().to_string_lossy().to_string(),
+        },
+    ];
+
+    for entry in WalkDir::new(install_path).follow_links(false) {
+        let entry = entry?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        summary.scanned_files += 1;
+
+        let path = entry.path();
+        if !is_macho_file(path)? {
+            if relocate_text_file(path, &replacements)? {
+                summary.relocated_files += 1;
+            }
+            continue;
+        }
+        summary.mach_o_files += 1;
+
+        if relocate_macho_file_with_replacements(path, &replacements)? {
+            summary.relocated_files += 1;
+        }
+    }
+
+    Ok(summary)
+}
+
 pub fn codesign_macho_tree(
     install_path: &Path,
     platform: &Platform,
@@ -143,6 +194,18 @@ pub fn codesign_macho_tree(
 }
 
 fn relocate_macho_file(path: &Path, replacements: &[Replacement]) -> Result<RelocateOutcome> {
+    let relocated = relocate_macho_file_with_replacements(path, replacements)?;
+
+    Ok(RelocateOutcome {
+        relocated,
+        unhandled_placeholders: !relocated,
+    })
+}
+
+fn relocate_macho_file_with_replacements(
+    path: &Path,
+    replacements: &[Replacement],
+) -> Result<bool> {
     let load_commands = otool_load_commands(path)?;
     let mut rpath_changes = Vec::new();
     let mut dylib_changes = Vec::new();
@@ -159,10 +222,7 @@ fn relocate_macho_file(path: &Path, replacements: &[Replacement]) -> Result<Relo
     }
 
     if rpath_changes.is_empty() && dylib_changes.is_empty() && id_change.is_none() {
-        return Ok(RelocateOutcome {
-            relocated: false,
-            unhandled_placeholders: true,
-        });
+        return Ok(false);
     }
 
     let mut args: Vec<String> = Vec::new();
@@ -184,10 +244,7 @@ fn relocate_macho_file(path: &Path, replacements: &[Replacement]) -> Result<Relo
 
     run_tool("install_name_tool", &args)?;
 
-    Ok(RelocateOutcome {
-        relocated: true,
-        unhandled_placeholders: false,
-    })
+    Ok(true)
 }
 
 fn otool_load_commands(path: &Path) -> Result<Vec<LoadCommandPath>> {
@@ -251,8 +308,8 @@ fn parse_load_command_value(line: &str, prefix: &str) -> Option<String> {
 fn replace_placeholders(value: &str, replacements: &[Replacement]) -> Option<String> {
     let mut updated = value.to_string();
     for replacement in replacements {
-        if updated.contains(replacement.placeholder) {
-            updated = updated.replace(replacement.placeholder, &replacement.value);
+        if updated.contains(&replacement.placeholder) {
+            updated = updated.replace(&replacement.placeholder, &replacement.value);
         }
     }
 
@@ -261,6 +318,30 @@ fn replace_placeholders(value: &str, replacements: &[Replacement]) -> Option<Str
     } else {
         None
     }
+}
+
+fn relocate_text_file(path: &Path, replacements: &[Replacement]) -> Result<bool> {
+    let metadata = fs::metadata(path)?;
+    if metadata.len() > MAX_TEXT_REWRITE_SIZE {
+        return Ok(false);
+    }
+
+    let bytes = fs::read(path)?;
+    if bytes.iter().any(|b| *b == 0) {
+        return Ok(false);
+    }
+
+    let content = match String::from_utf8(bytes) {
+        Ok(content) => content,
+        Err(_) => return Ok(false),
+    };
+
+    if let Some(updated) = replace_placeholders(&content, replacements) {
+        fs::write(path, updated)?;
+        return Ok(true);
+    }
+
+    Ok(false)
 }
 
 fn file_contains_placeholders(path: &Path) -> Result<bool> {
@@ -384,11 +465,11 @@ mod tests {
     fn test_replace_placeholders() {
         let replacements = vec![
             Replacement {
-                placeholder: HOMEBREW_CELLAR_PLACEHOLDER,
+                placeholder: HOMEBREW_CELLAR_PLACEHOLDER.to_string(),
                 value: "/tmp/cellar".to_string(),
             },
             Replacement {
-                placeholder: HOMEBREW_PREFIX_PLACEHOLDER,
+                placeholder: HOMEBREW_PREFIX_PLACEHOLDER.to_string(),
                 value: "/tmp".to_string(),
             },
         ];
