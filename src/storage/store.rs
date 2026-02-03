@@ -2,7 +2,7 @@ use crate::error::{ColdbrewError, Result};
 use crate::storage::paths::Paths;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, Instant};
 use walkdir::WalkDir;
 
@@ -171,20 +171,40 @@ fn extract_bottle(bottle_path: &Path, target_dir: &Path) -> Result<()> {
         let path = entry
             .path()
             .map_err(|err| ColdbrewError::ExtractionFailed(err.to_string()))?;
-        let path_components: Vec<_> = path.components().collect();
 
-        if path_components.len() > 2 {
-            let relative_path: PathBuf = path_components[2..].iter().collect();
-            let dest = target_dir.join(&relative_path);
+        let mut relative_path = PathBuf::new();
+        let mut skipped = 0;
 
-            if let Some(parent) = dest.parent() {
-                fs::create_dir_all(parent)?;
+        for component in path.components() {
+            if skipped < 2 {
+                skipped += 1;
+                continue;
             }
 
-            entry
-                .unpack(&dest)
-                .map_err(|err| ColdbrewError::ExtractionFailed(err.to_string()))?;
+            match component {
+                Component::Normal(part) => relative_path.push(part),
+                _ => {
+                    return Err(ColdbrewError::ExtractionFailed(format!(
+                        "Invalid bottle entry path: {}",
+                        path.display()
+                    )));
+                }
+            }
         }
+
+        if relative_path.as_os_str().is_empty() {
+            continue;
+        }
+
+        let dest = target_dir.join(&relative_path);
+
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        entry
+            .unpack(&dest)
+            .map_err(|err| ColdbrewError::ExtractionFailed(err.to_string()))?;
     }
 
     Ok(())

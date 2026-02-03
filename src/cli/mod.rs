@@ -25,6 +25,27 @@ pub struct Cli {
 }
 
 #[derive(Subcommand)]
+pub enum SpaceCommand {
+    /// Show disk usage and cleanup candidates
+    Show {
+        /// Show itemized details
+        #[arg(short, long)]
+        details: bool,
+    },
+
+    /// Cleanup old versions, cache, and other unused data
+    Clean {
+        /// Clean everything without prompts
+        #[arg(short, long)]
+        all: bool,
+
+        /// Dry run - show what would be removed
+        #[arg(short, long)]
+        dry_run: bool,
+    },
+}
+
+#[derive(Subcommand)]
 pub enum Commands {
     /// Update the package index from Homebrew
     Update,
@@ -150,22 +171,10 @@ pub enum Commands {
         remove: bool,
     },
 
-    /// Show disk usage and cleanup candidates
+    /// Disk usage and cleanup commands
     Space {
-        /// Show itemized details
-        #[arg(short, long)]
-        details: bool,
-    },
-
-    /// Cleanup old versions, cache, and other unused data
-    Clean {
-        /// Clean everything without prompts
-        #[arg(short, long)]
-        all: bool,
-
-        /// Dry run - show what would be removed
-        #[arg(short, long)]
-        dry_run: bool,
+        #[command(subcommand)]
+        command: Option<SpaceCommand>,
     },
 
     /// Force-link a keg-only package

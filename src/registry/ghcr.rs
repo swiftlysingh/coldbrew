@@ -126,7 +126,7 @@ impl GhcrClient {
             *cache = Some(TokenCache {
                 token: token_response.token.clone(),
                 repository: repository.to_string(),
-                expires_at: Instant::now() + Duration::from_secs(expires_in - 30), // Buffer
+                expires_at: Instant::now() + Duration::from_secs(expires_in.saturating_sub(30)), // Buffer
             });
         }
 

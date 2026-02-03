@@ -3,8 +3,11 @@
 use crate::cli::output::{format_bytes, format_duration, Output};
 use crate::config::GlobalConfig;
 use crate::core::package::{InstalledPackage, PackageMetadata, RuntimeDependency};
+use crate::core::platform::Os;
+use crate::core::version::{version_matches, Version};
 use crate::core::{BottleFile, DependencyResolver, Formula, Platform};
 use crate::error::{ColdbrewError, Result};
+use crate::ops::relocate;
 use crate::ops::verify;
 use crate::registry::{GhcrClient, Index};
 use crate::storage::{Cache, Cellar, Database, Paths, ShimManager, Store};
@@ -34,6 +37,12 @@ struct InstallOptions<'a> {
     force: bool,
 }
 
+#[derive(Clone, Copy, Debug)]
+enum VersionPolicy {
+    Flexible,
+    Exact,
+}
+
 /// Install a package
 pub async fn install(
     paths: &Paths,
@@ -41,6 +50,27 @@ pub async fn install(
     version: Option<&str>,
     skip_deps: bool,
     force: bool,
+    output: &Output,
+) -> Result<InstalledPackage> {
+    install_with_policy(
+        paths,
+        name,
+        version,
+        skip_deps,
+        force,
+        VersionPolicy::Flexible,
+        output,
+    )
+    .await
+}
+
+async fn install_with_policy(
+    paths: &Paths,
+    name: &str,
+    version: Option<&str>,
+    skip_deps: bool,
+    force: bool,
+    version_policy: VersionPolicy,
     output: &Output,
 ) -> Result<InstalledPackage> {
     let config = GlobalConfig::load(paths)?;
@@ -93,8 +123,15 @@ pub async fn install(
         ));
     }
 
-    let download_groups =
-        plan_download_groups(&ctx, &install_order, &formula_map, name, version, force)?;
+    let download_groups = plan_download_groups(
+        &ctx,
+        &install_order,
+        &formula_map,
+        name,
+        version,
+        force,
+        version_policy,
+    )?;
     let parallel_downloads = if download_groups.is_empty() {
         1
     } else {
@@ -146,15 +183,20 @@ pub async fn install(
         }
 
         let target_version = if is_root {
-            version.unwrap_or(&formula.versions.stable)
+            match version {
+                Some(requested) => {
+                    resolve_requested_version(&pkg_name, requested, formula, version_policy)?
+                }
+                None => formula.version_with_revision(),
+            }
         } else {
-            &formula.versions.stable
+            formula.version_with_revision()
         };
 
-        if is_root && cellar.is_installed(&pkg_name, target_version) && !force {
+        if is_root && cellar.is_installed(&pkg_name, &target_version) && !force {
             return Err(ColdbrewError::PackageAlreadyInstalled {
                 name: pkg_name.clone(),
-                version: target_version.to_string(),
+                version: target_version.clone(),
             });
         }
 
@@ -178,7 +220,7 @@ pub async fn install(
         let installed = install_single(
             &ctx,
             &pkg_name,
-            target_version,
+            &target_version,
             formula,
             bottle_plan,
             runtime_deps,
@@ -211,12 +253,13 @@ pub async fn install_from_lockfile(
     for (name, locked) in &lockfile.packages {
         output.info(&format!("Installing {} {}...", name, locked.version));
 
-        let pkg = install(
+        let pkg = install_with_policy(
             paths,
             name,
             Some(&locked.version),
             true, // Skip deps, lockfile has them
             false,
+            VersionPolicy::Exact,
             output,
         )
         .await?;
@@ -255,6 +298,54 @@ fn resolve_runtime_deps(
     }
 
     Ok(runtime_deps)
+}
+
+fn resolve_requested_version(
+    name: &str,
+    requested: &str,
+    formula: &Formula,
+    policy: VersionPolicy,
+) -> Result<String> {
+    let resolved = formula.version_with_revision();
+
+    if matches!(policy, VersionPolicy::Exact) {
+        if requested == resolved {
+            return Ok(resolved);
+        }
+
+        return Err(ColdbrewError::VersionNotAvailable {
+            name: name.to_string(),
+            requested: requested.to_string(),
+            available: resolved,
+        });
+    }
+
+    if requested == resolved {
+        return Ok(resolved);
+    }
+
+    if requested == formula.versions.stable {
+        return Ok(resolved);
+    }
+
+    match Version::parse(&resolved) {
+        Ok(resolved_version) => {
+            if version_matches(&resolved_version, requested) {
+                Ok(resolved)
+            } else {
+                Err(ColdbrewError::VersionNotAvailable {
+                    name: name.to_string(),
+                    requested: requested.to_string(),
+                    available: resolved,
+                })
+            }
+        }
+        Err(_) => Err(ColdbrewError::VersionNotAvailable {
+            name: name.to_string(),
+            requested: requested.to_string(),
+            available: resolved,
+        }),
+    }
 }
 
 #[derive(Clone)]
@@ -486,6 +577,7 @@ fn plan_download_groups(
     root: &str,
     root_version: Option<&str>,
     force: bool,
+    version_policy: VersionPolicy,
 ) -> Result<Vec<DownloadGroup>> {
     let mut groups: HashMap<String, DownloadGroup> = HashMap::new();
 
@@ -500,15 +592,20 @@ fn plan_download_groups(
         }
 
         let target_version = if is_root {
-            root_version.unwrap_or(&formula.versions.stable)
+            match root_version {
+                Some(requested) => {
+                    resolve_requested_version(pkg_name, requested, formula, version_policy)?
+                }
+                None => formula.version_with_revision(),
+            }
         } else {
-            &formula.versions.stable
+            formula.version_with_revision()
         };
 
-        if is_root && ctx.cellar.is_installed(pkg_name, target_version) && !force {
+        if is_root && ctx.cellar.is_installed(pkg_name, &target_version) && !force {
             return Err(ColdbrewError::PackageAlreadyInstalled {
                 name: pkg_name.clone(),
-                version: target_version.to_string(),
+                version: target_version.clone(),
             });
         }
 
@@ -528,7 +625,7 @@ fn plan_download_groups(
             DownloadGroup {
                 sha256,
                 name: pkg_name.clone(),
-                version: target_version.to_string(),
+                version: target_version.clone(),
                 tag: bottle_plan.tag.clone(),
                 formula: formula.clone(),
                 bottle_file: bottle_plan.file.clone(),
@@ -738,7 +835,30 @@ async fn install_single(
     let conn = db.connect()?;
     let store_size = ctx.store.entry_size(&bottle_plan.file.sha256)?;
     db.upsert_store_entry(&conn, &bottle_plan.file.sha256, store_size)?;
-    db.add_store_ref(&conn, &bottle_plan.file.sha256, name, version)?;
+
+    if ctx.platform.os == Os::MacOS {
+        ctx.output.debug("Relocating bottle...");
+        let summary =
+            match relocate::relocate_bottle(&install_path, ctx.paths, ctx.platform, ctx.output) {
+                Ok(summary) => summary,
+                Err(err) => {
+                    cleanup_failed_install(ctx, name, version);
+                    return Err(err);
+                }
+            };
+        if summary.relocated_files > 0 {
+            ctx.output.debug(&format!(
+                "Relocated {} Mach-O files",
+                summary.relocated_files
+            ));
+            ctx.output.debug("Codesigning Mach-O files...");
+            if let Err(err) = relocate::codesign_macho_tree(&install_path, ctx.platform, ctx.output)
+            {
+                cleanup_failed_install(ctx, name, version);
+                return Err(err);
+            }
+        }
+    }
 
     let mut installed = InstalledPackage::new(
         name.to_string(),
@@ -768,6 +888,7 @@ async fn install_single(
 
     let metadata = PackageMetadata::new(installed.clone(), bottle_plan.file.url.clone());
     ctx.cellar.save_metadata(&metadata)?;
+    db.add_store_ref(&conn, &bottle_plan.file.sha256, name, version)?;
 
     ctx.output.debug(&format!(
         "Installed {} {} in {}",
@@ -777,4 +898,11 @@ async fn install_single(
     ));
 
     Ok(installed)
+}
+
+fn cleanup_failed_install(ctx: &InstallContext<'_>, name: &str, version: &str) {
+    if let Err(err) = ctx.cellar.uninstall(name, version) {
+        ctx.output
+            .debug(&format!("Failed to cleanup {} {}: {}", name, version, err));
+    }
 }
