@@ -11,8 +11,10 @@ use crate::ops::relocate;
 use crate::ops::verify;
 use crate::registry::{GhcrClient, Index};
 use crate::storage::{Cache, Cellar, Database, Paths, ShimManager, Store};
+use futures_util::future::BoxFuture;
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -172,11 +174,12 @@ async fn install_with_policy(
     };
 
     let mut installed_versions: HashMap<String, String> = HashMap::new();
-    let mut root_installed: Option<InstalledPackage> = None;
+    let mut target_versions: HashMap<String, String> = HashMap::new();
+    let mut install_plans: HashMap<String, InstallPlan> = HashMap::new();
 
-    for pkg_name in install_order {
+    for pkg_name in &install_order {
         let formula = formula_map
-            .get(&pkg_name)
+            .get(pkg_name)
             .ok_or_else(|| ColdbrewError::PackageNotFound(pkg_name.clone()))?;
 
         let is_root = pkg_name == name;
@@ -210,38 +213,138 @@ async fn install_with_policy(
             });
         }
 
+        target_versions.insert(pkg_name.clone(), target_version.clone());
+    }
+
+    for pkg_name in &install_order {
+        if !target_versions.contains_key(pkg_name) {
+            continue;
+        }
+        let formula = formula_map
+            .get(pkg_name)
+            .ok_or_else(|| ColdbrewError::PackageNotFound(pkg_name.clone()))?;
+        let is_root = pkg_name == name;
         let runtime_deps = if is_root && skip_deps {
             Vec::new()
         } else {
-            resolve_runtime_deps(formula, &installed_versions, &cellar, paths)?
+            resolve_runtime_deps_with_targets(
+                formula,
+                &installed_versions,
+                &target_versions,
+                &cellar,
+                paths,
+            )?
         };
 
         let bottle_plan = resolve_bottle(formula, ctx.platform, &pkg_name)?;
+        let target_version = target_versions
+            .get(pkg_name)
+            .cloned()
+            .unwrap_or_else(|| formula.version_with_revision());
 
-        if let Some(manager) = download_manager.as_mut() {
-            manager.wait_for(&bottle_plan.file.sha256, output).await?;
+        install_plans.insert(
+            pkg_name.clone(),
+            InstallPlan {
+                name: pkg_name.clone(),
+                version: target_version,
+                formula: formula.clone(),
+                bottle_plan,
+                runtime_deps,
+                installed_as_dependency: !is_root,
+                installed_for: if is_root {
+                    None
+                } else {
+                    Some(name.to_string())
+                },
+                force: is_root && force,
+            },
+        );
+    }
+
+    let mut deps_remaining: HashMap<String, usize> = HashMap::new();
+    let mut dependents: HashMap<String, Vec<String>> = HashMap::new();
+    for (pkg_name, plan) in &install_plans {
+        let mut count = 0;
+        if !(pkg_name == name && skip_deps) {
+            for dep in &plan.formula.dependencies {
+                if install_plans.contains_key(dep) {
+                    count += 1;
+                    dependents
+                        .entry(dep.clone())
+                        .or_default()
+                        .push(pkg_name.clone());
+                }
+            }
+        }
+        deps_remaining.insert(pkg_name.clone(), count);
+    }
+
+    let mut ready = VecDeque::new();
+    for (pkg_name, count) in &deps_remaining {
+        if *count == 0 {
+            ready.push_back(pkg_name.clone());
+        }
+    }
+
+    let install_limit = config.settings.parallel_extractions.max(1);
+    let mut in_flight = 0usize;
+    let mut futures: FuturesUnordered<BoxFuture<'_, Result<(String, InstalledPackage)>>> =
+        FuturesUnordered::new();
+    let mut root_installed: Option<InstalledPackage> = None;
+
+    while !ready.is_empty() || !futures.is_empty() {
+        while in_flight < install_limit {
+            let Some(pkg_name) = ready.pop_front() else {
+                break;
+            };
+            let plan = install_plans
+                .get(&pkg_name)
+                .cloned()
+                .ok_or_else(|| ColdbrewError::PackageNotFound(pkg_name.clone()))?;
+            if let Some(manager) = download_manager.as_mut() {
+                manager
+                    .wait_for(&plan.bottle_plan.file.sha256, output)
+                    .await?;
+            }
+            let ctx = &ctx;
+            futures.push(Box::pin(async move {
+                let options = InstallOptions {
+                    installed_as_dependency: plan.installed_as_dependency,
+                    installed_for: plan.installed_for.as_deref(),
+                    force: plan.force,
+                };
+                let installed = install_single(
+                    ctx,
+                    &plan.name,
+                    &plan.version,
+                    &plan.formula,
+                    plan.bottle_plan,
+                    plan.runtime_deps,
+                    options,
+                )
+                .await?;
+                Ok((plan.name, installed))
+            }));
+            in_flight += 1;
         }
 
-        let options = InstallOptions {
-            installed_as_dependency: !is_root,
-            installed_for: if is_root { None } else { Some(name) },
-            force: is_root && force,
+        let Some(result) = futures.next().await else {
+            break;
         };
-        let installed = install_single(
-            &ctx,
-            &pkg_name,
-            &target_version,
-            formula,
-            bottle_plan,
-            runtime_deps,
-            options,
-        )
-        .await?;
-
-        installed_versions.insert(pkg_name.clone(), installed.version.clone());
-
-        if is_root {
-            root_installed = Some(installed);
+        in_flight = in_flight.saturating_sub(1);
+        let (pkg_name, installed): (String, InstalledPackage) = result?;
+        if pkg_name == name {
+            root_installed = Some(installed.clone());
+        }
+        if let Some(dependents) = dependents.get(&pkg_name) {
+            for dependent in dependents {
+                if let Some(count) = deps_remaining.get_mut(dependent) {
+                    *count = count.saturating_sub(1);
+                    if *count == 0 {
+                        ready.push_back(dependent.clone());
+                    }
+                }
+            }
         }
     }
 
@@ -280,9 +383,10 @@ pub async fn install_from_lockfile(
     Ok(installed)
 }
 
-fn resolve_runtime_deps(
+fn resolve_runtime_deps_with_targets(
     formula: &Formula,
     installed_versions: &HashMap<String, String>,
+    target_versions: &HashMap<String, String>,
     cellar: &Cellar,
     paths: &Paths,
 ) -> Result<Vec<RuntimeDependency>> {
@@ -290,6 +394,8 @@ fn resolve_runtime_deps(
 
     for dep_name in &formula.dependencies {
         let version = if let Some(version) = installed_versions.get(dep_name) {
+            version.clone()
+        } else if let Some(version) = target_versions.get(dep_name) {
             version.clone()
         } else if let Some(version) = cellar.latest_version(dep_name)? {
             version
@@ -417,6 +523,18 @@ struct DownloadResult {
 
 struct DownloadHandle {
     handle: JoinHandle<Result<DownloadResult>>,
+}
+
+#[derive(Clone)]
+struct InstallPlan {
+    name: String,
+    version: String,
+    formula: Formula,
+    bottle_plan: BottlePlan,
+    runtime_deps: Vec<RuntimeDependency>,
+    installed_as_dependency: bool,
+    installed_for: Option<String>,
+    force: bool,
 }
 
 struct DownloadManager {
