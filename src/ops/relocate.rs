@@ -322,6 +322,7 @@ fn replace_placeholders(value: &str, replacements: &[Replacement]) -> Option<Str
 
 fn relocate_text_file(path: &Path, replacements: &[Replacement]) -> Result<bool> {
     let metadata = fs::metadata(path)?;
+    let permissions = metadata.permissions();
     if metadata.len() > MAX_TEXT_REWRITE_SIZE {
         return Ok(false);
     }
@@ -338,6 +339,7 @@ fn relocate_text_file(path: &Path, replacements: &[Replacement]) -> Result<bool>
 
     if let Some(updated) = replace_placeholders(&content, replacements) {
         fs::write(path, updated)?;
+        fs::set_permissions(path, permissions)?;
         return Ok(true);
     }
 

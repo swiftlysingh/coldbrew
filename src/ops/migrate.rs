@@ -3,6 +3,7 @@
 use crate::cli::output::Output;
 use crate::core::package::{InstalledPackage, PackageMetadata, RuntimeDependency};
 use crate::core::platform::{Os, Platform};
+use crate::core::version::Version;
 use crate::error::{ColdbrewError, Result};
 use crate::ops;
 use crate::ops::relocate;
@@ -87,8 +88,8 @@ pub async fn migrate(
     let leaves = parse_brew_leaves(&leaves_output);
 
     output.info("Reading Homebrew installed formula versions...");
-    let versions_output = run_brew(&brew, &["list", "--formula", "--versions"]).await?;
-    let versions = parse_brew_formula_versions(&versions_output);
+    let versions_output = run_brew(&brew, &["info", "--json=v2", "--installed"]).await?;
+    let versions = parse_brew_installed_versions(&versions_output)?;
 
     let mut summary = MigrationSummary::new(leaves.len(), dry_run);
 
@@ -641,30 +642,72 @@ fn parse_brew_leaves(output: &str) -> Vec<String> {
         .collect()
 }
 
-fn parse_brew_formula_versions(output: &str) -> HashMap<String, String> {
+#[derive(serde::Deserialize)]
+struct BrewInfo {
+    #[serde(default)]
+    formulae: Vec<BrewFormula>,
+}
+
+#[derive(serde::Deserialize)]
+struct BrewFormula {
+    name: String,
+    #[serde(default)]
+    installed: Vec<BrewInstalled>,
+    #[serde(default)]
+    linked_keg: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct BrewInstalled {
+    version: String,
+}
+
+fn parse_brew_installed_versions(output: &str) -> Result<HashMap<String, String>> {
+    let info: BrewInfo = serde_json::from_str(output)?;
     let mut versions = HashMap::new();
 
-    for line in output.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
+    for formula in info.formulae {
+        let linked = formula
+            .linked_keg
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_string());
+
+        let selected = linked.or_else(|| choose_installed_version(&formula.installed));
+        if let Some(version) = selected {
+            versions.insert(formula.name, version);
         }
-
-        let mut parts = line.split_whitespace();
-        let name = match parts.next() {
-            Some(name) => name,
-            None => continue,
-        };
-
-        let version = match parts.last() {
-            Some(version) => version,
-            None => continue,
-        };
-
-        versions.insert(name.to_string(), version.to_string());
     }
 
-    versions
+    Ok(versions)
+}
+
+fn choose_installed_version(installed: &[BrewInstalled]) -> Option<String> {
+    let mut best_parsed: Option<(Version, String)> = None;
+    let mut best_raw: Option<String> = None;
+
+    for item in installed {
+        if let Ok(parsed) = Version::parse(&item.version) {
+            let replace = match &best_parsed {
+                Some((best, _)) => parsed > *best,
+                None => true,
+            };
+            if replace {
+                best_parsed = Some((parsed, item.version.clone()));
+            }
+        } else {
+            let replace = match &best_raw {
+                Some(best) => item.version > *best,
+                None => true,
+            };
+            if replace {
+                best_raw = Some(item.version.clone());
+            }
+        }
+    }
+
+    best_parsed.map(|(_, version)| version).or(best_raw)
 }
 
 fn parse_brew_casks(output: &str) -> Vec<String> {

@@ -44,10 +44,21 @@ if [ "$1" = "leaves" ] && [ "$2" = "--installed-on-request" ]; then
   exit 0
 fi
 
-if [ "$1" = "list" ] && [ "$2" = "--formula" ] && [ "$3" = "--versions" ]; then
-  echo "jq 1.7.1"
-  echo "node@22 22.1.0"
-  echo "ripgrep 13.0.0"
+if [ "$1" = "info" ] && [ "$2" = "--json=v2" ] && [ "$3" = "--installed" ]; then
+  cat <<'JSON'
+{
+  "formulae": [
+    { "name": "jq", "installed": [{ "version": "1.7.1" }], "linked_keg": "1.7.1" },
+    { "name": "node@22", "installed": [{ "version": "22.1.0" }], "linked_keg": "22.1.0" },
+    {
+      "name": "ripgrep",
+      "installed": [{ "version": "13.0.0" }, { "version": "14.0.0" }],
+      "linked_keg": "13.0.0"
+    }
+  ],
+  "casks": []
+}
+JSON
   exit 0
 fi
 
