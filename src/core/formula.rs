@@ -184,6 +184,15 @@ impl Formula {
         &self.versions.stable
     }
 
+    /// Get the stable version including revision suffix, if any
+    pub fn version_with_revision(&self) -> String {
+        if self.revision > 0 {
+            format!("{}_{}", self.versions.stable, self.revision)
+        } else {
+            self.versions.stable.clone()
+        }
+    }
+
     /// Check if this formula has a bottle for the given platform tag
     pub fn has_bottle(&self, tag: &str) -> bool {
         self.bottle

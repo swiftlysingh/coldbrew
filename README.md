@@ -17,17 +17,14 @@ A Homebrew-compatible package manager in Rust - user-controlled, fast, and repro
 
 ## Installation
 
-```bash
-cargo install coldbrew
-```
-
-Or build from source:
+Coldbrew is not published on crates.io yet. Install from source:
 
 ```bash
 git clone https://github.com/swiftlysingh/coldbrew
 cd coldbrew
-cargo build --release
+cargo install --path .
 ```
+
 
 ## Quick Start
 
@@ -90,7 +87,7 @@ crew install # Install from lockfile
 | `lock` | Generate lockfile |
 | `tap <user/repo>` | Add or remove a tap |
 | `space` | Show disk usage and cleanup candidates |
-| `clean [--all] [--dry-run]` | Interactive cleanup |
+| `space clean [--all] [--dry-run]` | Interactive cleanup |
 | `link <package>` | Force-link a keg-only package |
 | `unlink <package>` | Remove links for a package |
 | `doctor` | Check for problems |

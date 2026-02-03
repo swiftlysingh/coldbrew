@@ -102,7 +102,7 @@ Last updated: January 28, 2026
 - Add `store/` and `locks/` under `~/.coldbrew`.
 - Extract bottle tarball into `store/{sha256}` once.
 - Materialize into cellar using clonefile/hardlink/copy.
-- Track refcounts to allow `clean` to delete unreferenced store entries.
+- Track refcounts to allow `space clean` to delete unreferenced store entries.
 
 ### Phase 4: Streaming Install Pipeline (large)
 - Download bottles concurrently and process each as it completes:
@@ -135,7 +135,7 @@ Last updated: January 28, 2026
 ## Locking + Concurrency
 - Use per-store-entry lock files (like zerobrew) to prevent double extraction.
 - For downloads, use inflight map keyed by sha256 with broadcast to waiters.
-- Ensure `clean` does not race with installs (global GC lock file).
+- Ensure `space clean` does not race with installs (global GC lock file).
 
 ## Error Handling
 - On checksum mismatch: delete blob and retry download (up to N times).
