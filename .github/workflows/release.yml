@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: macos
+            os: macos-latest
+            target: aarch64-apple-darwin
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package
+        run: |
+          cp target/${{ matrix.target }}/release/crew .
+          tar -czf crew-${{ matrix.target }}.tar.gz crew
+          if command -v shasum >/dev/null 2>&1; then
+            shasum -a 256 crew-${{ matrix.target }}.tar.gz > crew-${{ matrix.target }}.sha256
+          else
+            sha256sum crew-${{ matrix.target }}.tar.gz > crew-${{ matrix.target }}.sha256
+          fi
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            crew-${{ matrix.target }}.tar.gz
+            crew-${{ matrix.target }}.sha256
