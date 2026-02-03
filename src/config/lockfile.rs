@@ -28,7 +28,7 @@ pub struct Lockfile {
 /// A locked package with exact version and checksum
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LockedPackage {
-    /// Exact version
+    /// Exact version (including revision)
     pub version: String,
 
     /// SHA256 checksum of the bottle
@@ -88,9 +88,9 @@ impl Lockfile {
             .get_formula(name)?
             .ok_or_else(|| ColdbrewError::PackageNotFound(name.to_string()))?;
 
-        // For now, just use the stable version
+        // For now, just use the stable version (including revision)
         // TODO: Implement version constraint matching
-        let version = formula.versions.stable.clone();
+        let version = formula.version_with_revision();
 
         // Get bottle info
         let (sha256, bottle_tag) = if let Some(ref stable) = formula.bottle.stable {

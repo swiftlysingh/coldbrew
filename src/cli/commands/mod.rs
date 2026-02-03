@@ -1,6 +1,5 @@
 //! CLI command implementations
 
-pub mod clean;
 pub mod default;
 pub mod dependents;
 pub mod doctor;

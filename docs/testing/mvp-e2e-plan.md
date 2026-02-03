@@ -35,9 +35,9 @@ Verify the core user flows work end-to-end with real network data and a clean fi
 
 ### 5) Space and Clean
 - `coldbrew space`
-- `coldbrew space --details`
-- `coldbrew clean --dry-run`
-**Expected:** space shows disk usage; clean shows candidate removals without changes.
+- `coldbrew space show --details`
+- `coldbrew space clean --dry-run`
+**Expected:** space shows disk usage; space clean shows candidate removals without changes.
 
 ### 6) Uninstall
 - `coldbrew uninstall jq`
