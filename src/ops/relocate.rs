@@ -6,6 +6,7 @@ use crate::error::{ColdbrewError, Result};
 use crate::storage::Paths;
 use std::fs::File;
 use std::io::Read;
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::process::Command;
 use walkdir::WalkDir;
@@ -143,6 +144,7 @@ pub fn codesign_macho_tree(
 }
 
 fn relocate_macho_file(path: &Path, replacements: &[Replacement]) -> Result<RelocateOutcome> {
+    ensure_writable(path)?;
     let load_commands = otool_load_commands(path)?;
     let mut rpath_changes = Vec::new();
     let mut dylib_changes = Vec::new();
@@ -341,6 +343,7 @@ fn is_macho_file(path: &Path) -> Result<bool> {
 }
 
 fn codesign_file(path: &Path) -> Result<()> {
+    ensure_writable(path)?;
     let args = vec![
         "--sign".to_string(),
         "-".to_string(),
@@ -349,6 +352,17 @@ fn codesign_file(path: &Path) -> Result<()> {
         path.to_string_lossy().to_string(),
     ];
     run_tool("codesign", &args)?;
+    Ok(())
+}
+
+fn ensure_writable(path: &Path) -> Result<()> {
+    let metadata = std::fs::metadata(path)?;
+    let mut perms = metadata.permissions();
+    let mode = perms.mode();
+    if mode & 0o200 == 0 {
+        perms.set_mode(mode | 0o200);
+        std::fs::set_permissions(path, perms)?;
+    }
     Ok(())
 }
 
