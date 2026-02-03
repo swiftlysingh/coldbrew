@@ -69,6 +69,9 @@ Rationale:
 - Extraction and codesign are disk-heavy; caps avoid I/O thrash on fast CPUs.
 - We can tune these later using real metrics.
 
+Note:
+- Install concurrency is currently bounded by `parallel_extractions` (no separate knob yet).
+
 ## Guardrails and risks
 Multi-stage semaphores can introduce new problems if we are not careful:
 

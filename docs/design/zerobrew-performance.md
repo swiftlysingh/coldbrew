@@ -42,6 +42,7 @@ Last updated: January 28, 2026
 - Config has `parallel_downloads`, `parallel_extractions`, and `parallel_codesigning`.
 - Download tasks do download -> verify; extraction is bounded separately.
 - Codesigning is bounded during install (macOS only).
+- Install steps can overlap across packages (bounded by extraction concurrency).
 - Dependency resolution and formula loading are serial.
 
 ### Storage Model
