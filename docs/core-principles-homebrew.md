@@ -125,7 +125,7 @@ engineering guidelines for building and evolving the Coldbrew CLI.
 ## Engineering Workflow
 
 ### Design First
-- For new features, start with a short design note in `docs/design/`.
+- For new features, start with a short design note in `docs/`.
 - Define user-visible behavior and edge cases before code.
 
 ### Testing and Quality

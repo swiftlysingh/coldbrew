@@ -12,8 +12,7 @@ A Homebrew-compatible package manager in Rust - user-controlled, fast, and repro
 
 ## Design Docs
 
-- Core principles, CLI behavior, and Homebrew integration: `docs/design/core-principles-homebrew.md`
-- Performance roadmap and zerobrew-inspired ideas: `docs/design/zerobrew-performance.md`
+- Core principles, CLI behavior, and Homebrew integration: `docs/core-principles-homebrew.md`
 
 ## Installation
 
@@ -89,13 +88,13 @@ crew install # Install from lockfile
 
 ## Man Page
 
-The repository includes a manual page at `docs/man/crew.1`.
+The repository includes a manual page at `docs/crew.1`.
 
 Install it locally:
 
 ```bash
 mkdir -p ~/.local/share/man/man1
-cp docs/man/crew.1 ~/.local/share/man/man1/
+cp docs/crew.1 ~/.local/share/man/man1/
 man crew
 ```
 
