@@ -18,6 +18,7 @@ use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
 use tokio::task::JoinHandle;
@@ -35,6 +36,7 @@ struct InstallContext<'a> {
     install_semaphore: Arc<Semaphore>,
     extract_semaphore: Arc<Semaphore>,
     codesign_semaphore: Arc<Semaphore>,
+    metrics: Arc<Mutex<InstallMetrics>>,
 }
 
 struct InstallOptions<'a> {
@@ -85,6 +87,7 @@ async fn install_with_policy(
     let install_semaphore = Arc::new(Semaphore::new(config.settings.parallel_installs.max(1)));
     let extract_semaphore = Arc::new(Semaphore::new(config.settings.parallel_extractions.max(1)));
     let codesign_semaphore = Arc::new(Semaphore::new(config.settings.parallel_codesigning.max(1)));
+    let metrics = Arc::new(Mutex::new(InstallMetrics::default()));
 
     let index = Index::new(paths.clone());
     let cellar = Cellar::new(paths.clone());
@@ -106,6 +109,7 @@ async fn install_with_policy(
         install_semaphore,
         extract_semaphore,
         codesign_semaphore,
+        metrics,
     };
 
     let formulas = index.list_formulas()?;
@@ -356,6 +360,18 @@ async fn install_with_policy(
         manager.wait_for_all(output).await?;
     }
 
+    if let Ok(metrics) = ctx.metrics.lock() {
+        if metrics.installs > 0 {
+            output.debug(&format!(
+                "Install stage totals: materialize {}, relocate {}, codesign {}, total {}",
+                format_duration(metrics.materialize.as_secs()),
+                format_duration(metrics.relocate.as_secs()),
+                format_duration(metrics.codesign.as_secs()),
+                format_duration(metrics.total.as_secs())
+            ));
+        }
+    }
+
     root_installed.ok_or_else(|| ColdbrewError::PackageNotFound(name.to_string()))
 }
 
@@ -527,6 +543,15 @@ struct DownloadResult {
 
 struct DownloadHandle {
     handle: JoinHandle<Result<DownloadResult>>,
+}
+
+#[derive(Debug, Default)]
+struct InstallMetrics {
+    installs: usize,
+    materialize: Duration,
+    relocate: Duration,
+    codesign: Duration,
+    total: Duration,
 }
 
 #[derive(Clone)]
@@ -942,6 +967,8 @@ async fn install_single(
     options: InstallOptions<'_>,
 ) -> Result<InstalledPackage> {
     let install_start = Instant::now();
+    let mut relocate_duration = Duration::ZERO;
+    let mut codesign_duration = Duration::ZERO;
     if ctx.cellar.is_installed(name, version) && !options.force {
         return Err(ColdbrewError::PackageAlreadyInstalled {
             name: name.to_string(),
@@ -994,10 +1021,11 @@ async fn install_single(
     let install_path = ctx
         .store
         .materialize(&bottle_plan.file.sha256, name, version)?;
+    let materialize_duration = materialize_start.elapsed();
     ctx.output.debug(&format!(
         "Materialized {} in {}",
         name,
-        format_duration(materialize_start.elapsed().as_secs())
+        format_duration(materialize_duration.as_secs())
     ));
 
     let db = Database::new(ctx.paths.clone());
@@ -1008,6 +1036,7 @@ async fn install_single(
 
     if ctx.platform.os == Os::MacOS {
         ctx.output.debug("Relocating bottle...");
+        let relocate_start = Instant::now();
         let summary =
             match relocate::relocate_bottle(&install_path, ctx.paths, ctx.platform, ctx.output) {
                 Ok(summary) => summary,
@@ -1016,12 +1045,14 @@ async fn install_single(
                     return Err(err);
                 }
             };
+        relocate_duration = relocate_start.elapsed();
         if summary.relocated_files > 0 {
             ctx.output.debug(&format!(
                 "Relocated {} Mach-O files",
                 summary.relocated_files
             ));
             ctx.output.debug("Codesigning Mach-O files...");
+            let codesign_start = Instant::now();
             let _permit = ctx
                 .codesign_semaphore
                 .clone()
@@ -1035,6 +1066,7 @@ async fn install_single(
                 cleanup_failed_install(ctx, name, version);
                 return Err(err);
             }
+            codesign_duration = codesign_start.elapsed();
         }
     }
 
@@ -1067,11 +1099,19 @@ async fn install_single(
     let metadata = PackageMetadata::new(installed.clone(), bottle_plan.file.url.clone());
     ctx.cellar.save_metadata(&metadata)?;
 
+    let total_duration = install_start.elapsed();
+    if let Ok(mut metrics) = ctx.metrics.lock() {
+        metrics.installs += 1;
+        metrics.materialize += materialize_duration;
+        metrics.relocate += relocate_duration;
+        metrics.codesign += codesign_duration;
+        metrics.total += total_duration;
+    }
     ctx.output.debug(&format!(
         "Installed {} {} in {}",
         name,
         version,
-        format_duration(install_start.elapsed().as_secs())
+        format_duration(total_duration.as_secs())
     ));
 
     Ok(installed)
