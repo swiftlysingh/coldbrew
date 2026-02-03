@@ -68,7 +68,7 @@ exit 1
 }
 
 #[test]
-fn migrate_dry_run_skips_casks_and_version_mismatch() {
+fn migrate_dry_run_handles_casks_and_imports_keg_versions() {
     let temp = TempDir::new().unwrap();
     let home = temp.path().join("home");
     fs::create_dir_all(&home).unwrap();
@@ -89,7 +89,8 @@ fn migrate_dry_run_skips_casks_and_version_mismatch() {
         .assert()
         .success()
         .stderr(predicate::str::contains("Skipping 1 Homebrew cask"))
+        .stderr(predicate::str::contains("importing Homebrew keg"))
         .stderr(predicate::str::contains(
-            "Migration complete: would migrate 2, 1 skipped, 0 failed",
+            "Migration complete: would migrate 3, 0 skipped, 0 failed",
         ));
 }
