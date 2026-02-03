@@ -13,6 +13,7 @@ A Homebrew-compatible package manager in Rust - user-controlled, fast, and repro
 ## Design Docs
 
 - Core principles, CLI behavior, and Homebrew integration: `docs/core-principles-homebrew.md`
+- Parallel install pipeline plan: `docs/parallel-pipeline.md`
 
 ## Installation
 
