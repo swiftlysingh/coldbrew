@@ -67,7 +67,7 @@ fn default_parallel_downloads() -> usize {
         .map(|count| {
             let cpus = count.get();
             let downloads = cpus.saturating_mul(2);
-            downloads.max(2).min(16)
+            downloads.clamp(2, 16)
         })
         .unwrap_or(4)
 }
@@ -76,14 +76,14 @@ fn default_parallel_extractions() -> usize {
     std::thread::available_parallelism()
         .map(|count| {
             let cpus = count.get();
-            cpus.saturating_sub(1).max(1).min(4)
+            cpus.saturating_sub(1).clamp(1, 4)
         })
         .unwrap_or(2)
 }
 
 fn default_parallel_codesigning() -> usize {
     std::thread::available_parallelism()
-        .map(|count| count.get().max(1).min(4))
+        .map(|count| count.get().clamp(1, 4))
         .unwrap_or(2)
 }
 
@@ -91,7 +91,7 @@ fn default_parallel_installs() -> usize {
     std::thread::available_parallelism()
         .map(|count| {
             let cpus = count.get();
-            cpus.saturating_sub(1).max(1).min(4)
+            cpus.saturating_sub(1).clamp(1, 4)
         })
         .unwrap_or(2)
 }

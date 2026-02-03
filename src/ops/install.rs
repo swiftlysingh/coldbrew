@@ -32,6 +32,7 @@ struct InstallContext<'a> {
     cellar: &'a Cellar,
     output: &'a Output,
     download_semaphore: Arc<Semaphore>,
+    install_semaphore: Arc<Semaphore>,
     extract_semaphore: Arc<Semaphore>,
     codesign_semaphore: Arc<Semaphore>,
 }
@@ -81,6 +82,7 @@ async fn install_with_policy(
     let config = GlobalConfig::load(paths)?;
     let cdn_racing = config.settings.cdn_racing;
     let download_semaphore = Arc::new(Semaphore::new(config.settings.parallel_downloads.max(1)));
+    let install_semaphore = Arc::new(Semaphore::new(config.settings.parallel_installs.max(1)));
     let extract_semaphore = Arc::new(Semaphore::new(config.settings.parallel_extractions.max(1)));
     let codesign_semaphore = Arc::new(Semaphore::new(config.settings.parallel_codesigning.max(1)));
 
@@ -101,6 +103,7 @@ async fn install_with_policy(
         cellar: &cellar,
         output,
         download_semaphore,
+        install_semaphore,
         extract_semaphore,
         codesign_semaphore,
     };
@@ -185,7 +188,7 @@ async fn install_with_policy(
         let is_root = pkg_name == name;
 
         if !is_root {
-            if let Some(existing) = cellar.latest_version(&pkg_name)? {
+            if let Some(existing) = cellar.latest_version(pkg_name)? {
                 output.debug(&format!(
                     "Dependency {} already installed at {}",
                     pkg_name, existing
@@ -198,7 +201,7 @@ async fn install_with_policy(
         let target_version = if is_root {
             match version {
                 Some(requested) => {
-                    resolve_requested_version(&pkg_name, requested, formula, version_policy)?
+                    resolve_requested_version(pkg_name, requested, formula, version_policy)?
                 }
                 None => formula.version_with_revision(),
             }
@@ -206,7 +209,7 @@ async fn install_with_policy(
             formula.version_with_revision()
         };
 
-        if is_root && cellar.is_installed(&pkg_name, &target_version) && !force {
+        if is_root && cellar.is_installed(pkg_name, &target_version) && !force {
             return Err(ColdbrewError::PackageAlreadyInstalled {
                 name: pkg_name.clone(),
                 version: target_version.clone(),
@@ -236,7 +239,7 @@ async fn install_with_policy(
             )?
         };
 
-        let bottle_plan = resolve_bottle(formula, ctx.platform, &pkg_name)?;
+        let bottle_plan = resolve_bottle(formula, ctx.platform, pkg_name)?;
         let target_version = target_versions
             .get(pkg_name)
             .cloned()
@@ -286,16 +289,18 @@ async fn install_with_policy(
         }
     }
 
-    let install_limit = config.settings.parallel_installs.max(1);
-    let mut in_flight = 0usize;
     let mut futures: FuturesUnordered<BoxFuture<'_, Result<(String, InstalledPackage)>>> =
         FuturesUnordered::new();
     let mut root_installed: Option<InstalledPackage> = None;
 
     while !ready.is_empty() || !futures.is_empty() {
-        while in_flight < install_limit {
-            let Some(pkg_name) = ready.pop_front() else {
-                break;
+        while let Some(pkg_name) = ready.pop_front() {
+            let permit = match ctx.install_semaphore.clone().try_acquire_owned() {
+                Ok(permit) => permit,
+                Err(_) => {
+                    ready.push_front(pkg_name);
+                    break;
+                }
             };
             let plan = install_plans
                 .get(&pkg_name)
@@ -308,6 +313,7 @@ async fn install_with_policy(
             }
             let ctx = &ctx;
             futures.push(Box::pin(async move {
+                let _permit = permit;
                 let options = InstallOptions {
                     installed_as_dependency: plan.installed_as_dependency,
                     installed_for: plan.installed_for.as_deref(),
@@ -325,13 +331,11 @@ async fn install_with_policy(
                 .await?;
                 Ok((plan.name, installed))
             }));
-            in_flight += 1;
         }
 
         let Some(result) = futures.next().await else {
             break;
         };
-        in_flight = in_flight.saturating_sub(1);
         let (pkg_name, installed): (String, InstalledPackage) = result?;
         if pkg_name == name {
             root_installed = Some(installed.clone());
@@ -582,6 +586,7 @@ impl DownloadProgress {
 }
 
 impl DownloadManager {
+    #[allow(clippy::too_many_arguments)]
     fn start(
         cache: Arc<Cache>,
         store: Arc<Store>,
