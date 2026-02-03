@@ -13,7 +13,7 @@ use crate::registry::{GhcrClient, Index};
 use crate::storage::{Cache, Cellar, Database, Paths, ShimManager, Store};
 use futures_util::future::BoxFuture;
 use futures_util::stream::{FuturesUnordered, StreamExt};
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
@@ -173,6 +173,7 @@ async fn install_with_policy(
             download_groups,
             ctx.download_semaphore.clone(),
             ctx.extract_semaphore.clone(),
+            config.settings.per_bottle_progress,
             paths.clone(),
             output,
         ))
@@ -569,6 +570,7 @@ struct InstallPlan {
 struct DownloadManager {
     handles: HashMap<String, DownloadHandle>,
     progress: Option<Arc<DownloadProgress>>,
+    multi_progress: Option<MultiProgress>,
     bytes_downloaded: u64,
     download_duration: Duration,
     extract_duration: Duration,
@@ -619,10 +621,27 @@ impl DownloadManager {
         groups: Vec<DownloadGroup>,
         download_semaphore: Arc<Semaphore>,
         extract_semaphore: Arc<Semaphore>,
+        per_bottle_progress: bool,
         paths: Paths,
         output: &Output,
     ) -> Self {
-        let progress = DownloadProgress::new(groups.len(), "Downloading bottles");
+        let mut progress = DownloadProgress::new(groups.len(), "Downloading bottles");
+        let mut multi_progress = None;
+        let mut per_bottle_bars: HashMap<String, ProgressBar> = HashMap::new();
+        if per_bottle_progress && !groups.is_empty() {
+            progress = None;
+            let multi = MultiProgress::new();
+            let style = ProgressStyle::default_bar()
+                .template("{msg} [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({bytes_per_sec})")
+                .unwrap();
+            for group in &groups {
+                let bar = multi.add(ProgressBar::new(0));
+                bar.set_style(style.clone());
+                bar.set_message(format!("{} {}", group.name, group.version));
+                per_bottle_bars.insert(group.sha256.clone(), bar);
+            }
+            multi_progress = Some(multi);
+        }
         let mut handles = HashMap::new();
 
         for group in groups {
@@ -634,6 +653,7 @@ impl DownloadManager {
             let extract_semaphore = extract_semaphore.clone();
             let progress = progress.clone();
             let paths = paths.clone();
+            let progress_bar = per_bottle_bars.get(&sha256).cloned();
 
             let handle = tokio::spawn(async move {
                 let result = download_group(
@@ -643,6 +663,7 @@ impl DownloadManager {
                     store.as_ref(),
                     download_semaphore,
                     extract_semaphore,
+                    progress_bar,
                     group,
                 )
                 .await;
@@ -662,6 +683,7 @@ impl DownloadManager {
         Self {
             handles,
             progress,
+            multi_progress,
             bytes_downloaded: 0,
             download_duration: Duration::ZERO,
             extract_duration: Duration::ZERO,
@@ -687,6 +709,7 @@ impl DownloadManager {
         if let Some(progress) = self.progress.as_ref() {
             progress.bar.finish_and_clear();
         }
+        let _ = self.multi_progress.take();
         self.print_summary(output);
         Ok(())
     }
@@ -806,6 +829,7 @@ async fn download_group(
     store: &Store,
     download_semaphore: Arc<Semaphore>,
     extract_semaphore: Arc<Semaphore>,
+    progress_bar: Option<ProgressBar>,
     group: DownloadGroup,
 ) -> Result<DownloadResult> {
     let bottle_plan = BottlePlan {
@@ -828,6 +852,7 @@ async fn download_group(
         &group.version,
         download_semaphore,
         extract_semaphore,
+        progress_bar,
     )
     .await?;
 
@@ -850,6 +875,7 @@ async fn prepare_bottle(
     version: &str,
     download_semaphore: Arc<Semaphore>,
     extract_semaphore: Arc<Semaphore>,
+    progress_bar: Option<ProgressBar>,
 ) -> Result<PrepareResult> {
     let start = Instant::now();
     let mut download_duration = Duration::ZERO;
@@ -881,11 +907,26 @@ async fn prepare_bottle(
                     ColdbrewError::Other(format!("Failed to acquire download slot: {}", err))
                 })?;
             let download_start = Instant::now();
+            let progress_bar_callback = progress_bar.clone();
             ctx.ghcr
-                .download_bottle(formula, &bottle_plan.file, &temp_path, |downloaded, _| {
-                    downloaded_bytes_clone.store(downloaded, Ordering::Relaxed);
-                })
+                .download_bottle(
+                    formula,
+                    &bottle_plan.file,
+                    &temp_path,
+                    |downloaded, total| {
+                        if let Some(bar) = progress_bar_callback.as_ref() {
+                            if total > 0 {
+                                bar.set_length(total);
+                            }
+                            bar.set_position(downloaded);
+                        }
+                        downloaded_bytes_clone.store(downloaded, Ordering::Relaxed);
+                    },
+                )
                 .await?;
+            if let Some(bar) = progress_bar.as_ref() {
+                bar.finish_and_clear();
+            }
             fs::rename(&temp_path, &dest)?;
             let reported = downloaded_bytes.load(Ordering::Relaxed);
             let size = dest.metadata().map(|meta| meta.len()).unwrap_or(0);
@@ -910,6 +951,9 @@ async fn prepare_bottle(
                 Some(&bottle_plan.tag),
                 size,
             )?;
+            if let Some(bar) = progress_bar.as_ref() {
+                bar.finish_and_clear();
+            }
         }
 
         if let Err(err) = verify::verify_bottle(&dest, sha256, name) {
@@ -995,6 +1039,7 @@ async fn install_single(
             version,
             ctx.download_semaphore.clone(),
             ctx.extract_semaphore.clone(),
+            None,
         )
         .await?;
 

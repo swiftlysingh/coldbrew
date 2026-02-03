@@ -45,6 +45,10 @@ pub struct Settings {
     #[serde(default = "default_parallel_installs")]
     pub parallel_installs: usize,
 
+    /// Show per-bottle download progress bars (default: false)
+    #[serde(default)]
+    pub per_bottle_progress: bool,
+
     /// Keep old versions (default: 2)
     #[serde(default = "default_keep_versions")]
     pub keep_versions: usize,
@@ -108,6 +112,7 @@ impl Default for Settings {
             parallel_extractions: default_parallel_extractions(),
             parallel_codesigning: default_parallel_codesigning(),
             parallel_installs: default_parallel_installs(),
+            per_bottle_progress: false,
             keep_versions: 2,
             analytics: false,
             cdn_racing: false,
@@ -200,6 +205,7 @@ mod tests {
         assert!(config.settings.parallel_codesigning <= 4);
         assert!(config.settings.parallel_installs >= 1);
         assert!(config.settings.parallel_installs <= 4);
+        assert!(!config.settings.per_bottle_progress);
     }
 
     #[test]

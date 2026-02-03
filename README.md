@@ -76,6 +76,7 @@ parallel_downloads = 8      # min(cpus * 2, 16)
 parallel_extractions = 3    # min(cpus - 1, 4)
 parallel_codesigning = 2    # min(cpus, 4)
 parallel_installs = 3       # min(cpus - 1, 4)
+per_bottle_progress = false # show per-bottle download bars
 ```
 
 ## Commands
