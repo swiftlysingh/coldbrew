@@ -73,8 +73,12 @@ pub enum Commands {
     /// Install packages
     Install {
         /// Packages to install (e.g., jq, node@22)
-        #[arg(required = true)]
+        #[arg(required_unless_present = "lock")]
         packages: Vec<String>,
+
+        /// Install from coldbrew.lock instead of individual packages
+        #[arg(long, conflicts_with = "packages")]
+        lock: bool,
 
         /// Skip dependency installation
         #[arg(long)]

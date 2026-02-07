@@ -144,6 +144,9 @@ impl ColdbrewError {
             ColdbrewError::LockfileNotFound => {
                 Some("Run 'crew lock' to create a lockfile from coldbrew.toml")
             }
+            ColdbrewError::LockfileOutOfSync => {
+                Some("Run 'crew lock' to regenerate the lockfile from coldbrew.toml")
+            }
             ColdbrewError::ProjectNotFound => {
                 Some("Run 'crew init' to create a coldbrew.toml in this directory")
             }
