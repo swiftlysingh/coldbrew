@@ -4,7 +4,7 @@ use crate::config::GlobalConfig;
 use crate::core::InstalledPackage;
 use crate::error::Result;
 use crate::registry::TapManager;
-use crate::storage::{Cache, Cellar, Paths, ShimManager};
+use crate::storage::{Cache, Cellar, Database, Paths, ShimManager, Store};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -16,6 +16,7 @@ pub enum CleanupKind {
     BrokenShims,
     OrphanedDependencies,
     UnusedTaps,
+    OrphanedStore,
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +56,8 @@ pub fn collect_categories(paths: &Paths) -> Result<Vec<CleanupCategory>> {
     let cache = Cache::new(paths.clone());
     let shim_manager = ShimManager::new(paths.clone());
     let tap_manager = TapManager::new(paths.clone());
+    let db = Database::new(paths.clone());
+    let store = Store::new(paths.clone());
 
     let installed = cellar.list_packages()?;
 
@@ -65,6 +68,7 @@ pub fn collect_categories(paths: &Paths) -> Result<Vec<CleanupCategory>> {
         collect_broken_shims(&installed, &shim_manager)?,
         collect_orphaned_dependencies(&installed)?,
         collect_unused_taps(&installed, &tap_manager)?,
+        collect_orphaned_store(&db, &store)?,
     ])
 }
 
@@ -184,6 +188,25 @@ pub fn apply_cleanup(
                     if !dry_run {
                         if let Some(name) = item.name.as_deref() {
                             tap_manager.remove(name)?;
+                        }
+                    }
+                    result.removed += 1;
+                    result.freed += item.size;
+                }
+            }
+            CleanupKind::OrphanedStore => {
+                let db = Database::new(paths.clone());
+                let store = Store::new(paths.clone());
+                let conn = db.connect()?;
+
+                for item in &category.items {
+                    if !dry_run {
+                        // item.name contains the full sha256
+                        if let Some(sha256) = item.name.as_deref() {
+                            // Remove from disk first
+                            store.remove_entry(sha256)?;
+                            // Then remove from database
+                            db.delete_store_entry(&conn, sha256)?;
                         }
                     }
                     result.removed += 1;
@@ -380,6 +403,52 @@ fn collect_unused_taps(
     })
 }
 
+fn collect_orphaned_store(db: &Database, store: &Store) -> Result<CleanupCategory> {
+    let mut items = Vec::new();
+
+    // Try to connect to the database; if it doesn't exist, there are no orphans
+    let conn = match db.connect() {
+        Ok(conn) => conn,
+        Err(_) => {
+            return Ok(CleanupCategory {
+                kind: CleanupKind::OrphanedStore,
+                title: "Orphaned store entries",
+                items,
+            });
+        }
+    };
+
+    let orphaned = db.list_orphaned_store_entries(&conn)?;
+
+    for entry in orphaned {
+        let entry_path = store.entry_path(&entry.sha256);
+        // Only include entries that actually exist on disk
+        if entry_path.exists() {
+            // Get actual size from disk (may differ from DB if modified)
+            let size = dir_size(&entry_path);
+            let short_sha = if entry.sha256.len() > 12 {
+                format!("{}...", &entry.sha256[..12])
+            } else {
+                entry.sha256.clone()
+            };
+
+            items.push(CleanupItem {
+                label: short_sha,
+                path: entry_path,
+                size,
+                name: Some(entry.sha256),
+                version: None,
+            });
+        }
+    }
+
+    Ok(CleanupCategory {
+        kind: CleanupKind::OrphanedStore,
+        title: "Orphaned store entries",
+        items,
+    })
+}
+
 fn normalize_tap_name(tap: &str) -> Option<String> {
     let parts: Vec<&str> = tap.split('/').collect();
     if parts.len() != 2 {
@@ -415,4 +484,147 @@ fn dir_size(path: &Path) -> u64 {
     }
 
     total
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    fn setup_paths() -> (TempDir, Paths) {
+        let temp = TempDir::new().unwrap();
+        let paths = Paths::with_root(temp.path().to_path_buf());
+        paths.init().unwrap();
+        (temp, paths)
+    }
+
+    #[test]
+    fn test_collect_orphaned_store_empty() {
+        let (_temp, paths) = setup_paths();
+        let db = Database::new(paths.clone());
+        let store = Store::new(paths);
+
+        let category = collect_orphaned_store(&db, &store).unwrap();
+        assert_eq!(category.kind, CleanupKind::OrphanedStore);
+        assert!(category.items.is_empty());
+    }
+
+    #[test]
+    fn test_collect_orphaned_store_with_orphan() {
+        let (_temp, paths) = setup_paths();
+        let db = Database::new(paths.clone());
+        let store = Store::new(paths.clone());
+
+        // Create an orphaned store entry in DB
+        let conn = db.connect().unwrap();
+        db.upsert_store_entry(&conn, "abc123def456", 1000).unwrap();
+
+        // Create the actual directory on disk
+        let entry_path = paths.store_entry("abc123def456");
+        fs::create_dir_all(&entry_path).unwrap();
+        fs::write(entry_path.join("test.txt"), "test content").unwrap();
+
+        let category = collect_orphaned_store(&db, &store).unwrap();
+        assert_eq!(category.items.len(), 1);
+        assert_eq!(category.items[0].label, "abc123def456");
+        assert!(category.items[0].size > 0);
+    }
+
+    #[test]
+    fn test_collect_orphaned_store_skips_referenced() {
+        let (_temp, paths) = setup_paths();
+        let db = Database::new(paths.clone());
+        let store = Store::new(paths.clone());
+
+        // Create a referenced store entry
+        let conn = db.connect().unwrap();
+        db.upsert_store_entry(&conn, "referenced123", 1000).unwrap();
+        db.add_store_ref(&conn, "referenced123", "jq", "1.7.1").unwrap();
+
+        // Create the directory on disk
+        let entry_path = paths.store_entry("referenced123");
+        fs::create_dir_all(&entry_path).unwrap();
+        fs::write(entry_path.join("test.txt"), "test").unwrap();
+
+        let category = collect_orphaned_store(&db, &store).unwrap();
+        assert!(category.items.is_empty());
+    }
+
+    #[test]
+    fn test_collect_orphaned_store_skips_missing_on_disk() {
+        let (_temp, paths) = setup_paths();
+        let db = Database::new(paths.clone());
+        let store = Store::new(paths);
+
+        // Create an orphaned entry in DB but not on disk
+        let conn = db.connect().unwrap();
+        db.upsert_store_entry(&conn, "missing_on_disk", 1000).unwrap();
+
+        let category = collect_orphaned_store(&db, &store).unwrap();
+        // Should be empty because the entry doesn't exist on disk
+        assert!(category.items.is_empty());
+    }
+
+    #[test]
+    fn test_apply_cleanup_orphaned_store_dry_run() {
+        let (_temp, paths) = setup_paths();
+        let db = Database::new(paths.clone());
+
+        // Create an orphaned store entry
+        let conn = db.connect().unwrap();
+        db.upsert_store_entry(&conn, "orphan_sha256", 500).unwrap();
+
+        // Create the directory on disk
+        let entry_path = paths.store_entry("orphan_sha256");
+        fs::create_dir_all(&entry_path).unwrap();
+        fs::write(entry_path.join("file.bin"), "data").unwrap();
+
+        let categories = collect_categories(&paths).unwrap();
+        let mut selected = HashSet::new();
+        selected.insert(CleanupKind::OrphanedStore);
+
+        // Dry run should not delete anything
+        let result = apply_cleanup(&paths, &categories, &selected, true).unwrap();
+        assert_eq!(result.removed, 1);
+        assert!(result.freed > 0);
+
+        // Entry should still exist on disk
+        assert!(entry_path.exists());
+
+        // Entry should still be in DB
+        let orphans = db.list_orphaned_store_entries(&conn).unwrap();
+        assert_eq!(orphans.len(), 1);
+    }
+
+    #[test]
+    fn test_apply_cleanup_orphaned_store_actual() {
+        let (_temp, paths) = setup_paths();
+        let db = Database::new(paths.clone());
+
+        // Create an orphaned store entry
+        let conn = db.connect().unwrap();
+        db.upsert_store_entry(&conn, "to_delete_sha", 500).unwrap();
+
+        // Create the directory on disk
+        let entry_path = paths.store_entry("to_delete_sha");
+        fs::create_dir_all(&entry_path).unwrap();
+        fs::write(entry_path.join("file.bin"), "data").unwrap();
+
+        let categories = collect_categories(&paths).unwrap();
+        let mut selected = HashSet::new();
+        selected.insert(CleanupKind::OrphanedStore);
+
+        // Actual cleanup
+        let result = apply_cleanup(&paths, &categories, &selected, false).unwrap();
+        assert_eq!(result.removed, 1);
+        assert!(result.freed > 0);
+
+        // Entry should be deleted from disk
+        assert!(!entry_path.exists());
+
+        // Entry should be removed from DB
+        let orphans = db.list_orphaned_store_entries(&conn).unwrap();
+        assert!(orphans.is_empty());
+    }
 }
