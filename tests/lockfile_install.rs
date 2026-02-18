@@ -1,6 +1,6 @@
 //! Integration tests for lockfile-based installation
 
-use coldbrew::config::{Lockfile, LockedPackage, ProjectConfig};
+use coldbrew::config::{LockedPackage, Lockfile, ProjectConfig};
 use coldbrew::error::ColdbrewError;
 use std::collections::HashMap;
 use tempfile::TempDir;
@@ -49,7 +49,10 @@ fn test_lockfile_out_of_sync() {
     let loaded = Lockfile::load(&lock_path).unwrap();
     let config = ProjectConfig::load(&config_path).unwrap();
 
-    assert!(!loaded.is_in_sync(&config), "Lockfile should be out of sync");
+    assert!(
+        !loaded.is_in_sync(&config),
+        "Lockfile should be out of sync"
+    );
 }
 
 /// Test lockfile sync when in sync

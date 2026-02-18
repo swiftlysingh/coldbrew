@@ -21,7 +21,7 @@ pub async fn execute(
     paths.init()?;
 
     if from_lock {
-        return execute_from_lockfile(&paths, output).await;
+        return execute_from_lockfile(&paths, force, output).await;
     }
 
     for package in packages {
@@ -80,7 +80,7 @@ pub async fn execute(
 }
 
 /// Execute install from lockfile
-async fn execute_from_lockfile(paths: &Paths, output: &Output) -> Result<()> {
+async fn execute_from_lockfile(paths: &Paths, force: bool, output: &Output) -> Result<()> {
     let cwd = env::current_dir()?;
     let lock_path = cwd.join("coldbrew.lock");
     let config_path = cwd.join("coldbrew.toml");
@@ -106,7 +106,7 @@ async fn execute_from_lockfile(paths: &Paths, output: &Output) -> Result<()> {
         lockfile.packages.len()
     ));
 
-    let installed = ops::install::install_from_lockfile(paths, &lockfile, output).await?;
+    let installed = ops::install::install_from_lockfile(paths, &lockfile, force, output).await?;
 
     output.success(&format!(
         "Installed {} packages from lockfile",
