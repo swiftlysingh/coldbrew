@@ -328,8 +328,10 @@ mod tests {
         let conn = db.connect().unwrap();
 
         // Add a store entry with a reference - should not be orphaned
-        db.upsert_store_entry(&conn, "sha256_referenced", 1000).unwrap();
-        db.add_store_ref(&conn, "sha256_referenced", "jq", "1.7.1").unwrap();
+        db.upsert_store_entry(&conn, "sha256_referenced", 1000)
+            .unwrap();
+        db.add_store_ref(&conn, "sha256_referenced", "jq", "1.7.1")
+            .unwrap();
 
         let orphans = db.list_orphaned_store_entries(&conn).unwrap();
         assert!(orphans.is_empty());
@@ -344,8 +346,10 @@ mod tests {
         db.upsert_store_entry(&conn, "sha256_orphan", 2000).unwrap();
 
         // Add a referenced entry
-        db.upsert_store_entry(&conn, "sha256_referenced", 1000).unwrap();
-        db.add_store_ref(&conn, "sha256_referenced", "jq", "1.7.1").unwrap();
+        db.upsert_store_entry(&conn, "sha256_referenced", 1000)
+            .unwrap();
+        db.add_store_ref(&conn, "sha256_referenced", "jq", "1.7.1")
+            .unwrap();
 
         let orphans = db.list_orphaned_store_entries(&conn).unwrap();
         assert_eq!(orphans.len(), 1);
@@ -359,7 +363,8 @@ mod tests {
         let conn = db.connect().unwrap();
 
         // Add an entry
-        db.upsert_store_entry(&conn, "sha256_to_delete", 1000).unwrap();
+        db.upsert_store_entry(&conn, "sha256_to_delete", 1000)
+            .unwrap();
 
         // Verify it exists (would be orphaned)
         let orphans = db.list_orphaned_store_entries(&conn).unwrap();
@@ -379,15 +384,18 @@ mod tests {
         let conn = db.connect().unwrap();
 
         // Add a store entry with a reference
-        db.upsert_store_entry(&conn, "sha256_will_orphan", 1500).unwrap();
-        db.add_store_ref(&conn, "sha256_will_orphan", "node", "22.0.0").unwrap();
+        db.upsert_store_entry(&conn, "sha256_will_orphan", 1500)
+            .unwrap();
+        db.add_store_ref(&conn, "sha256_will_orphan", "node", "22.0.0")
+            .unwrap();
 
         // Should not be orphaned yet
         let orphans = db.list_orphaned_store_entries(&conn).unwrap();
         assert!(orphans.is_empty());
 
         // Remove the reference
-        db.remove_store_ref(&conn, "sha256_will_orphan", "node", "22.0.0").unwrap();
+        db.remove_store_ref(&conn, "sha256_will_orphan", "node", "22.0.0")
+            .unwrap();
 
         // Now should be orphaned
         let orphans = db.list_orphaned_store_entries(&conn).unwrap();

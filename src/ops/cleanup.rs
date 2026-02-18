@@ -540,7 +540,8 @@ mod tests {
         // Create a referenced store entry
         let conn = db.connect().unwrap();
         db.upsert_store_entry(&conn, "referenced123", 1000).unwrap();
-        db.add_store_ref(&conn, "referenced123", "jq", "1.7.1").unwrap();
+        db.add_store_ref(&conn, "referenced123", "jq", "1.7.1")
+            .unwrap();
 
         // Create the directory on disk
         let entry_path = paths.store_entry("referenced123");
@@ -559,7 +560,8 @@ mod tests {
 
         // Create an orphaned entry in DB but not on disk
         let conn = db.connect().unwrap();
-        db.upsert_store_entry(&conn, "missing_on_disk", 1000).unwrap();
+        db.upsert_store_entry(&conn, "missing_on_disk", 1000)
+            .unwrap();
 
         let category = collect_orphaned_store(&db, &store).unwrap();
         // Should be empty because the entry doesn't exist on disk
