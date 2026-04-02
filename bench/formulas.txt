@@ -1,0 +1,25 @@
+# Primary formulas (preferred)
+jq
+tree
+fd
+ripgrep
+wget
+git
+cmake
+node
+sqlite
+libyaml
+
+--fallback--
+
+# Fallback formulas (used when primary already installed)
+bat
+fzf
+neovim
+htop
+sqlite
+xz
+gettext
+libyaml
+zstd
+libuv
