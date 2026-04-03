@@ -70,7 +70,7 @@ Remove all versions.
 Also remove unused dependencies.
 .TP
 .B \-y, \-\-yes
-Skip confirmation prompts, including orphan dependency removal prompts.
+Skip confirmation prompts.
 .SS upgrade
 .B crew upgrade [OPTIONS] [packages]...
 .br
@@ -202,6 +202,10 @@ Update the package index:
 Install jq:
 .br
 .B crew install jq
+.TP
+Remove jq and any orphaned runtime dependencies without confirmation:
+.br
+.B crew uninstall jq --with-deps --yes
 .TP
 Pin a package:
 .br

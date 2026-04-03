@@ -6,6 +6,7 @@ use crate::error::{ColdbrewError, Result};
 use crate::storage::{Cellar, Database, Paths, ShimManager};
 use console::style;
 use dialoguer::Confirm;
+use rusqlite::Connection;
 use std::collections::HashSet;
 use std::io::{self, Write};
 
@@ -21,6 +22,8 @@ pub async fn uninstall(
 ) -> Result<Vec<(String, String)>> {
     let cellar = Cellar::new(paths.clone());
     let shim_manager = ShimManager::new(paths.clone());
+    let db = Database::new(paths.clone());
+    let conn = db.connect()?;
 
     let versions = cellar.get_versions(name)?;
 
@@ -48,60 +51,52 @@ pub async fn uninstall(
         vec![versions.last().unwrap().clone()]
     };
 
+    let mut config = GlobalConfig::load(paths)?;
     let mut removed = Vec::new();
+    let removal = PackageRemoval {
+        cellar: &cellar,
+        shim_manager: &shim_manager,
+        db: &db,
+        conn: &conn,
+        output,
+    };
 
     for version in &versions_to_remove {
-        let bottle_sha = cellar
-            .get_package(name, version)
-            .ok()
-            .and_then(|pkg| pkg.bottle_sha256.clone());
-
-        // Get binaries before removal
-        let binaries = cellar.get_binaries(name, version)?;
-
-        // Remove shims if this is the last version
         let remaining_versions: Vec<_> = versions
             .iter()
             .filter(|v| !versions_to_remove.contains(v))
             .collect();
 
-        if remaining_versions.is_empty() {
-            output.debug(&format!("Removing shims for {}", name));
-            shim_manager.remove_shims(&binaries)?;
+        output.debug(&format!("Removing {} {}...", name, version));
+        remove_single_package(&removal, name, version, remaining_versions.is_empty())?;
 
-            // Remove from defaults
-            let mut config = GlobalConfig::load(paths)?;
+        if remaining_versions.is_empty() {
             config.remove_default(name);
             config.remove_pin(name);
-            config.save(paths)?;
-        }
-
-        // Remove from cellar
-        output.debug(&format!("Removing {} {}...", name, version));
-        cellar.uninstall(name, version)?;
-
-        if let Some(sha256) = bottle_sha {
-            let db = Database::new(paths.clone());
-            let conn = db.connect()?;
-            db.remove_store_ref(&conn, &sha256, name, version)?;
         }
 
         removed.push((name.to_string(), version.clone()));
     }
 
+    let removed_set: HashSet<(String, String)> = removed.iter().cloned().collect();
+
     // Handle --with-deps: find and remove orphan dependencies
     if with_deps {
         output.debug("Checking for orphan dependencies...");
 
-        let orphans = find_orphan_dependencies(paths, name)?;
+        // The primary package versions have already been removed from the cellar,
+        // so pass the exact removed versions explicitly instead of relying on the
+        // current filesystem state to infer what's being uninstalled.
+        let orphans = find_orphan_dependencies(paths, &removed_set)?;
 
         if !orphans.is_empty() {
             output.info("The following dependencies are no longer required:");
             for orphan in &orphans {
                 println!(
-                    "  {} {}",
+                    "  {} {} {}",
                     style("•").dim(),
-                    Output::package_name(&orphan.0)
+                    Output::package_name(&orphan.0),
+                    Output::version(&orphan.1)
                 );
             }
 
@@ -120,35 +115,23 @@ pub async fn uninstall(
 
             if should_remove {
                 for (orphan_name, orphan_version) in &orphans {
-                    output.debug(&format!("Removing orphan {} {}...", orphan_name, orphan_version));
+                    output.debug(&format!(
+                        "Removing orphan {} {}...",
+                        orphan_name, orphan_version
+                    ));
 
-                    // Remove shims
-                    let binaries = cellar.get_binaries(orphan_name, orphan_version)?;
-                    if !binaries.is_empty() {
-                        shim_manager.remove_shims(&binaries)?;
-                    }
+                    let remaining_versions = cellar.get_versions(orphan_name)?;
+                    let should_remove_shims = remaining_versions.len() == 1;
 
-                    // Get bottle SHA before removal
-                    let bottle_sha = cellar
-                        .get_package(orphan_name, orphan_version)
-                        .ok()
-                        .and_then(|pkg| pkg.bottle_sha256.clone());
+                    remove_single_package(
+                        &removal,
+                        orphan_name,
+                        orphan_version,
+                        should_remove_shims,
+                    )?;
 
-                    // Remove from cellar
-                    cellar.uninstall(orphan_name, orphan_version)?;
-
-                    // Clean up store reference
-                    if let Some(sha256) = bottle_sha {
-                        let db = Database::new(paths.clone());
-                        let conn = db.connect()?;
-                        db.remove_store_ref(&conn, &sha256, orphan_name, orphan_version)?;
-                    }
-
-                    // Remove from config
-                    let mut config = GlobalConfig::load(paths)?;
                     config.remove_default(orphan_name);
                     config.remove_pin(orphan_name);
-                    config.save(paths)?;
 
                     removed.push((orphan_name.clone(), orphan_version.clone()));
                 }
@@ -160,7 +143,50 @@ pub async fn uninstall(
         }
     }
 
+    config.save(paths)?;
+
     Ok(removed)
+}
+
+struct PackageRemoval<'a> {
+    cellar: &'a Cellar,
+    shim_manager: &'a ShimManager,
+    db: &'a Database,
+    conn: &'a Connection,
+    output: &'a Output,
+}
+
+fn remove_single_package(
+    removal: &PackageRemoval<'_>,
+    name: &str,
+    version: &str,
+    remove_shims: bool,
+) -> Result<()> {
+    let bottle_sha = removal
+        .cellar
+        .get_package(name, version)
+        .ok()
+        .and_then(|pkg| pkg.bottle_sha256.clone());
+
+    if remove_shims {
+        let binaries = removal.cellar.get_binaries(name, version)?;
+        if !binaries.is_empty() {
+            removal
+                .output
+                .debug(&format!("Removing shims for {}", name));
+            removal.shim_manager.remove_shims(&binaries)?;
+        }
+    }
+
+    removal.cellar.uninstall(name, version)?;
+
+    if let Some(sha256) = bottle_sha {
+        removal
+            .db
+            .remove_store_ref(removal.conn, &sha256, name, version)?;
+    }
+
+    Ok(())
 }
 
 /// Find dependencies that are no longer required by any installed package
@@ -173,50 +199,43 @@ pub async fn uninstall(
 /// and A becomes an orphan, B may also become an orphan if nothing else needs it.
 pub fn find_orphan_dependencies(
     paths: &Paths,
-    uninstalled_package: &str,
+    removed_packages: &HashSet<(String, String)>,
 ) -> Result<Vec<(String, String)>> {
     let cellar = Cellar::new(paths.clone());
     let installed = cellar.list_packages()?;
-
-    // Build a map of package name -> package for quick lookup
-    let pkg_map: std::collections::HashMap<String, _> = installed
-        .iter()
-        .map(|pkg| (pkg.name.clone(), pkg))
-        .collect();
-
-    // Start with packages to exclude (being uninstalled)
-    let mut excluded: HashSet<String> = HashSet::new();
-    excluded.insert(uninstalled_package.to_string());
+    let mut excluded: HashSet<(String, String)> = removed_packages.clone();
 
     // Iteratively find orphans until no new ones are found
     loop {
-        let mut new_orphans: HashSet<String> = HashSet::new();
+        let mut new_orphans: HashSet<(String, String)> = HashSet::new();
 
         // For each package installed as a dependency
         for pkg in installed.iter().filter(|p| p.installed_as_dependency) {
-            if excluded.contains(&pkg.name) {
+            let pkg_key = (pkg.name.clone(), pkg.version.clone());
+            if excluded.contains(&pkg_key) {
                 continue; // Already marked as orphan or being uninstalled
             }
 
             // Check if any non-excluded package depends on this one
             let is_still_required = installed.iter().any(|other| {
                 // Skip excluded packages (being uninstalled or already orphaned)
-                if excluded.contains(&other.name) {
+                let other_key = (other.name.clone(), other.version.clone());
+                if excluded.contains(&other_key) {
                     return false;
                 }
                 // Skip self
-                if other.name == pkg.name {
+                if other.name == pkg.name && other.version == pkg.version {
                     return false;
                 }
                 // Check if other depends on this package
                 other
                     .runtime_dependencies
                     .iter()
-                    .any(|dep| dep.name == pkg.name)
+                    .any(|dep| dep.name == pkg.name && dep.version == pkg.version)
             });
 
             if !is_still_required {
-                new_orphans.insert(pkg.name.clone());
+                new_orphans.insert(pkg_key);
             }
         }
 
@@ -228,14 +247,11 @@ pub fn find_orphan_dependencies(
         excluded.extend(new_orphans);
     }
 
-    // Remove the originally uninstalled package from excluded set to get just orphans
-    excluded.remove(uninstalled_package);
-
-    // Collect orphan packages with their versions
-    let orphans: Vec<(String, String)> = excluded
+    let mut orphans: Vec<(String, String)> = excluded
         .into_iter()
-        .filter_map(|name| pkg_map.get(&name).map(|pkg| (name, pkg.version.clone())))
+        .filter(|pkg| !removed_packages.contains(pkg))
         .collect();
+    orphans.sort();
 
     Ok(orphans)
 }
@@ -317,8 +333,12 @@ mod tests {
         let jq = create_test_package("jq", "1.7.1", vec![], false);
         let paths = setup_test_cellar(&temp, &[jq]);
 
-        let orphans = find_orphan_dependencies(&paths, "jq").unwrap();
-        assert!(orphans.is_empty(), "Should find no orphans when no deps exist");
+        let removed = HashSet::from([(String::from("jq"), String::from("1.7.1"))]);
+        let orphans = find_orphan_dependencies(&paths, &removed).unwrap();
+        assert!(
+            orphans.is_empty(),
+            "Should find no orphans when no deps exist"
+        );
     }
 
     #[test]
@@ -332,9 +352,11 @@ mod tests {
         let paths = setup_test_cellar(&temp, &[jq, oniguruma]);
 
         // After uninstalling jq, oniguruma should be an orphan
-        let orphans = find_orphan_dependencies(&paths, "jq").unwrap();
+        let removed = HashSet::from([(String::from("jq"), String::from("1.7.1"))]);
+        let orphans = find_orphan_dependencies(&paths, &removed).unwrap();
         assert_eq!(orphans.len(), 1);
         assert_eq!(orphans[0].0, "oniguruma");
+        assert_eq!(orphans[0].1, "6.9.8");
     }
 
     #[test]
@@ -349,8 +371,12 @@ mod tests {
         let paths = setup_test_cellar(&temp, &[jq, ripgrep, pcre2]);
 
         // After uninstalling jq, pcre2 is still needed by ripgrep
-        let orphans = find_orphan_dependencies(&paths, "jq").unwrap();
-        assert!(orphans.is_empty(), "pcre2 should not be orphaned - still needed by ripgrep");
+        let removed = HashSet::from([(String::from("jq"), String::from("1.7.1"))]);
+        let orphans = find_orphan_dependencies(&paths, &removed).unwrap();
+        assert!(
+            orphans.is_empty(),
+            "pcre2 should not be orphaned - still needed by ripgrep"
+        );
     }
 
     #[test]
@@ -365,7 +391,8 @@ mod tests {
         let paths = setup_test_cellar(&temp, &[ffmpeg, x264, libmp3lame]);
 
         // After uninstalling ffmpeg, both x264 and libmp3lame become orphans
-        let orphans = find_orphan_dependencies(&paths, "ffmpeg").unwrap();
+        let removed = HashSet::from([(String::from("ffmpeg"), String::from("6.0"))]);
+        let orphans = find_orphan_dependencies(&paths, &removed).unwrap();
         assert_eq!(orphans.len(), 2);
 
         let orphan_names: HashSet<_> = orphans.iter().map(|(n, _)| n.as_str()).collect();
@@ -384,8 +411,57 @@ mod tests {
         let paths = setup_test_cellar(&temp, &[jq, oniguruma]);
 
         // oniguruma should NOT be an orphan because it was installed explicitly
-        let orphans = find_orphan_dependencies(&paths, "jq").unwrap();
-        assert!(orphans.is_empty(), "Explicitly installed packages should not be orphaned");
+        let removed = HashSet::from([(String::from("jq"), String::from("1.7.1"))]);
+        let orphans = find_orphan_dependencies(&paths, &removed).unwrap();
+        assert!(
+            orphans.is_empty(),
+            "Explicitly installed packages should not be orphaned"
+        );
+    }
+
+    #[test]
+    fn test_find_orphans_preserves_remaining_version_dependencies() {
+        let temp = TempDir::new().unwrap();
+
+        let foo_old = create_test_package("foo", "1.0.0", vec![("bar", "2.0.0")], false);
+        let mut foo_new = create_test_package("foo", "2.0.0", vec![("bar", "2.0.0")], false);
+        foo_new.installed_as_dependency = false;
+        let bar = create_test_package("bar", "2.0.0", vec![], true);
+
+        let paths = setup_test_cellar(&temp, &[foo_old, foo_new, bar]);
+        let removed = HashSet::from([(String::from("foo"), String::from("1.0.0"))]);
+
+        let orphans = find_orphan_dependencies(&paths, &removed).unwrap();
+        assert!(
+            orphans.is_empty(),
+            "Dependencies still required by another installed version must be kept"
+        );
+    }
+
+    #[test]
+    fn test_find_orphans_returns_all_orphan_versions() {
+        let temp = TempDir::new().unwrap();
+
+        let app = create_test_package(
+            "app",
+            "1.0.0",
+            vec![("lib", "1.0.0"), ("lib", "2.0.0")],
+            false,
+        );
+        let lib_v1 = create_test_package("lib", "1.0.0", vec![], true);
+        let lib_v2 = create_test_package("lib", "2.0.0", vec![], true);
+
+        let paths = setup_test_cellar(&temp, &[app, lib_v1, lib_v2]);
+        let removed = HashSet::from([(String::from("app"), String::from("1.0.0"))]);
+
+        let orphans = find_orphan_dependencies(&paths, &removed).unwrap();
+        assert_eq!(
+            orphans,
+            vec![
+                (String::from("lib"), String::from("1.0.0")),
+                (String::from("lib"), String::from("2.0.0"))
+            ]
+        );
     }
 
     #[tokio::test]
