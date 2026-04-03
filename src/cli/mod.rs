@@ -98,6 +98,10 @@ pub enum Commands {
         /// Also remove unused dependencies
         #[arg(long)]
         with_deps: bool,
+
+        /// Skip confirmation prompts
+        #[arg(short, long)]
+        yes: bool,
     },
 
     /// Upgrade installed packages
