@@ -80,6 +80,25 @@ impl Store {
         dir_size(&entry_path)
     }
 
+    /// Remove a store entry from disk
+    pub fn remove_entry(&self, sha256: &str) -> Result<()> {
+        let entry_path = self.paths.store_entry(sha256);
+        if entry_path.exists() {
+            fs::remove_dir_all(&entry_path)?;
+        }
+        // Also remove the lock file if it exists
+        let lock_path = self.paths.store_lock(sha256);
+        if lock_path.exists() {
+            let _ = fs::remove_file(&lock_path);
+        }
+        Ok(())
+    }
+
+    /// Get the path to a store entry
+    pub fn entry_path(&self, sha256: &str) -> PathBuf {
+        self.paths.store_entry(sha256)
+    }
+
     /// Materialize a store entry into the cellar
     pub fn materialize(&self, sha256: &str, name: &str, version: &str) -> Result<PathBuf> {
         let entry_path = self.paths.store_entry(sha256);

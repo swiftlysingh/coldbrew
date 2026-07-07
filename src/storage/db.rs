@@ -29,6 +29,13 @@ pub struct BlobCacheEntry {
     pub created_at: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct StoreEntryInfo {
+    pub sha256: String,
+    pub size_bytes: u64,
+    pub created_at: i64,
+}
+
 impl Database {
     /// Create a new Database handle
     pub fn new(paths: Paths) -> Self {
@@ -186,6 +193,40 @@ impl Database {
         Ok(())
     }
 
+    /// List all store entries that have no references (orphaned)
+    pub fn list_orphaned_store_entries(&self, conn: &Connection) -> Result<Vec<StoreEntryInfo>> {
+        let mut stmt = conn.prepare(
+            "SELECT se.sha256, se.size_bytes, se.created_at
+             FROM store_entries se
+             LEFT JOIN store_refs sr ON se.sha256 = sr.sha256
+             WHERE sr.sha256 IS NULL
+             ORDER BY se.created_at",
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            Ok(StoreEntryInfo {
+                sha256: row.get(0)?,
+                size_bytes: row.get(1)?,
+                created_at: row.get(2)?,
+            })
+        })?;
+
+        let mut entries = Vec::new();
+        for entry in rows {
+            entries.push(entry?);
+        }
+        Ok(entries)
+    }
+
+    /// Remove a store entry from the database
+    pub fn delete_store_entry(&self, conn: &Connection, sha256: &str) -> Result<()> {
+        conn.execute(
+            "DELETE FROM store_entries WHERE sha256 = ?1",
+            params![sha256],
+        )?;
+        Ok(())
+    }
+
     fn configure(conn: &Connection) -> Result<()> {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
@@ -257,4 +298,108 @@ fn now_timestamp() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn setup_db() -> (TempDir, Database) {
+        let temp = TempDir::new().unwrap();
+        let paths = Paths::with_root(temp.path().to_path_buf());
+        paths.init().unwrap();
+        let db = Database::new(paths);
+        (temp, db)
+    }
+
+    #[test]
+    fn test_list_orphaned_store_entries_empty() {
+        let (_temp, db) = setup_db();
+        let conn = db.connect().unwrap();
+
+        let orphans = db.list_orphaned_store_entries(&conn).unwrap();
+        assert!(orphans.is_empty());
+    }
+
+    #[test]
+    fn test_list_orphaned_store_entries_with_refs() {
+        let (_temp, db) = setup_db();
+        let conn = db.connect().unwrap();
+
+        // Add a store entry with a reference - should not be orphaned
+        db.upsert_store_entry(&conn, "sha256_referenced", 1000)
+            .unwrap();
+        db.add_store_ref(&conn, "sha256_referenced", "jq", "1.7.1")
+            .unwrap();
+
+        let orphans = db.list_orphaned_store_entries(&conn).unwrap();
+        assert!(orphans.is_empty());
+    }
+
+    #[test]
+    fn test_list_orphaned_store_entries_finds_orphans() {
+        let (_temp, db) = setup_db();
+        let conn = db.connect().unwrap();
+
+        // Add an orphaned store entry (no refs)
+        db.upsert_store_entry(&conn, "sha256_orphan", 2000).unwrap();
+
+        // Add a referenced entry
+        db.upsert_store_entry(&conn, "sha256_referenced", 1000)
+            .unwrap();
+        db.add_store_ref(&conn, "sha256_referenced", "jq", "1.7.1")
+            .unwrap();
+
+        let orphans = db.list_orphaned_store_entries(&conn).unwrap();
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(orphans[0].sha256, "sha256_orphan");
+        assert_eq!(orphans[0].size_bytes, 2000);
+    }
+
+    #[test]
+    fn test_delete_store_entry() {
+        let (_temp, db) = setup_db();
+        let conn = db.connect().unwrap();
+
+        // Add an entry
+        db.upsert_store_entry(&conn, "sha256_to_delete", 1000)
+            .unwrap();
+
+        // Verify it exists (would be orphaned)
+        let orphans = db.list_orphaned_store_entries(&conn).unwrap();
+        assert_eq!(orphans.len(), 1);
+
+        // Delete it
+        db.delete_store_entry(&conn, "sha256_to_delete").unwrap();
+
+        // Verify it's gone
+        let orphans = db.list_orphaned_store_entries(&conn).unwrap();
+        assert!(orphans.is_empty());
+    }
+
+    #[test]
+    fn test_entry_becomes_orphaned_after_ref_removed() {
+        let (_temp, db) = setup_db();
+        let conn = db.connect().unwrap();
+
+        // Add a store entry with a reference
+        db.upsert_store_entry(&conn, "sha256_will_orphan", 1500)
+            .unwrap();
+        db.add_store_ref(&conn, "sha256_will_orphan", "node", "22.0.0")
+            .unwrap();
+
+        // Should not be orphaned yet
+        let orphans = db.list_orphaned_store_entries(&conn).unwrap();
+        assert!(orphans.is_empty());
+
+        // Remove the reference
+        db.remove_store_ref(&conn, "sha256_will_orphan", "node", "22.0.0")
+            .unwrap();
+
+        // Now should be orphaned
+        let orphans = db.list_orphaned_store_entries(&conn).unwrap();
+        assert_eq!(orphans.len(), 1);
+        assert_eq!(orphans[0].sha256, "sha256_will_orphan");
+    }
 }

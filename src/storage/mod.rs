@@ -9,7 +9,7 @@ pub mod store;
 
 pub use cache::Cache;
 pub use cellar::Cellar;
-pub use db::Database;
+pub use db::{Database, StoreEntryInfo};
 pub use paths::Paths;
 pub use shim::ShimManager;
 pub use store::{Store, StoreEntry};
