@@ -11,6 +11,7 @@ pub async fn execute(
     packages: &[String],
     all: bool,
     with_deps: bool,
+    yes: bool,
     output: &Output,
 ) -> Result<()> {
     let paths = Paths::new()?;
@@ -20,9 +21,16 @@ pub async fn execute(
 
         output.info(&format!("Uninstalling {}", Output::package_name(&name)));
 
-        let result =
-            ops::uninstall::uninstall(&paths, &name, version.as_deref(), all, with_deps, output)
-                .await;
+        let result = ops::uninstall::uninstall(
+            &paths,
+            &name,
+            version.as_deref(),
+            all,
+            with_deps,
+            yes,
+            output,
+        )
+        .await;
 
         match result {
             Ok(removed) => {

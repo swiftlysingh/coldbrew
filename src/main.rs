@@ -64,8 +64,9 @@ async fn run() -> Result<()> {
             packages,
             all,
             with_deps,
+            yes,
         }) => {
-            commands::uninstall::execute(&packages, all, with_deps, &output).await?;
+            commands::uninstall::execute(&packages, all, with_deps, yes, &output).await?;
         }
 
         Some(Commands::Upgrade { packages, yes }) => {
