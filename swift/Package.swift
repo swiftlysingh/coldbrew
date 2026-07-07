@@ -12,7 +12,12 @@ let package = Package(
         .executable(name: "crew", targets: ["crew"]),
     ],
     targets: [
-        .target(name: "ColdbrewKit"),
+        .target(
+            name: "ColdbrewKit",
+            linkerSettings: [
+                .linkedLibrary("sqlite3"),
+            ]
+        ),
         .executableTarget(
             name: "crew",
             dependencies: ["ColdbrewKit"]
