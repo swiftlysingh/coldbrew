@@ -380,6 +380,7 @@ async fn install_with_policy(
 pub async fn install_from_lockfile(
     paths: &Paths,
     lockfile: &crate::config::Lockfile,
+    force: bool,
     output: &Output,
 ) -> Result<Vec<InstalledPackage>> {
     let mut installed = Vec::new();
@@ -387,18 +388,28 @@ pub async fn install_from_lockfile(
     for (name, locked) in &lockfile.packages {
         output.info(&format!("Installing {} {}...", name, locked.version));
 
-        let pkg = install_with_policy(
+        let result = install_with_policy(
             paths,
             name,
             Some(&locked.version),
             true, // Skip deps, lockfile has them
-            false,
+            force,
             VersionPolicy::Exact,
             output,
         )
-        .await?;
+        .await;
 
-        installed.push(pkg);
+        match result {
+            Ok(pkg) => installed.push(pkg),
+            Err(ColdbrewError::PackageAlreadyInstalled { name, version }) => {
+                output.info(&format!(
+                    "Already installed {} {}",
+                    Output::package_name(&name),
+                    Output::version(&version)
+                ));
+            }
+            Err(err) => return Err(err),
+        }
     }
 
     Ok(installed)

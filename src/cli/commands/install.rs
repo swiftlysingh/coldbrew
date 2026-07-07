@@ -1,6 +1,7 @@
 //! Install command - install packages
 
 use crate::cli::output::Output;
+use crate::config::{Lockfile, ProjectConfig};
 use crate::core::version::parse_package_spec;
 use crate::error::{ColdbrewError, Result};
 use crate::ops;
@@ -11,12 +12,17 @@ use std::path::{Path, PathBuf};
 /// Execute the install command
 pub async fn execute(
     packages: &[String],
+    from_lock: bool,
     skip_deps: bool,
     force: bool,
     output: &Output,
 ) -> Result<()> {
     let paths = Paths::new()?;
     paths.init()?;
+
+    if from_lock {
+        return execute_from_lockfile(&paths, force, output).await;
+    }
 
     for package in packages {
         let (name, version) = parse_package_spec(package);
@@ -68,6 +74,48 @@ pub async fn execute(
                 return Err(e);
             }
         }
+    }
+
+    Ok(())
+}
+
+/// Execute install from lockfile
+async fn execute_from_lockfile(paths: &Paths, force: bool, output: &Output) -> Result<()> {
+    let cwd = env::current_dir()?;
+    let lock_path = cwd.join("coldbrew.lock");
+    let config_path = cwd.join("coldbrew.toml");
+
+    // Check if lockfile exists
+    if !lock_path.exists() {
+        return Err(ColdbrewError::LockfileNotFound);
+    }
+
+    // Load lockfile
+    let lockfile = Lockfile::load(&lock_path)?;
+
+    // Check if lockfile is in sync with config (if config exists)
+    if config_path.exists() {
+        let config = ProjectConfig::load(&config_path)?;
+        if !lockfile.is_in_sync(&config) {
+            return Err(ColdbrewError::LockfileOutOfSync);
+        }
+    }
+
+    output.info(&format!(
+        "Installing {} packages from lockfile...",
+        lockfile.packages.len()
+    ));
+
+    let installed = ops::install::install_from_lockfile(paths, &lockfile, force, output).await?;
+
+    output.success(&format!(
+        "Installed {} packages from lockfile",
+        installed.len()
+    ));
+
+    // Show path hint for last package with binaries
+    if let Some(pkg) = installed.iter().find(|p| p.has_binaries() && !p.keg_only) {
+        hint_path(paths, pkg, output);
     }
 
     Ok(())

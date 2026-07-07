@@ -54,10 +54,11 @@ async fn run() -> Result<()> {
 
         Some(Commands::Install {
             packages,
+            lock,
             skip_deps,
             force,
         }) => {
-            commands::install::execute(&packages, skip_deps, force, &output).await?;
+            commands::install::execute(&packages, lock, skip_deps, force, &output).await?;
         }
 
         Some(Commands::Uninstall {
