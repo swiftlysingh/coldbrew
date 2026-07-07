@@ -38,3 +38,46 @@ jobs:
 
       - name: Test
         run: cargo test
+
+  harness-rust:
+    name: Harness against Rust
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Test harness
+        run: cargo test --test integration
+
+  swift:
+    name: Swift (${{ matrix.name }})
+    runs-on: ${{ matrix.runs_on }}
+    continue-on-error: ${{ matrix.allow_failure }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            runs_on: macos-latest
+            allow_failure: false
+          - name: linux
+            runs_on: ubuntu-latest
+            allow_failure: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build
+        working-directory: swift
+        run: swift build
+
+      - name: Test
+        working-directory: swift
+        run: swift test
