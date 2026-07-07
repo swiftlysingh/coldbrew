@@ -11,11 +11,17 @@ let package = Package(
         .library(name: "ColdbrewKit", targets: ["ColdbrewKit"]),
         .executable(name: "crew", targets: ["crew"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
+    ],
     targets: [
         .target(name: "ColdbrewKit"),
         .executableTarget(
             name: "crew",
-            dependencies: ["ColdbrewKit"]
+            dependencies: [
+                "ColdbrewKit",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ]
         ),
         .testTarget(
             name: "ColdbrewKitTests",
