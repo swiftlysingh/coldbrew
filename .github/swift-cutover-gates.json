@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "targetBranch": "swift-main",
+  "rootPackageMoveAllowed": false,
+  "lastReviewed": "2026-07-08",
+  "rootMovePrerequisites": [
+    {
+      "id": "swift-package",
+      "status": "pending",
+      "evidence": "swift/Package.swift is not present on swift-main yet."
+    },
+    {
+      "id": "harness-rust",
+      "status": "pending",
+      "evidence": "The executable-spec harness is not present on swift-main yet."
+    },
+    {
+      "id": "harness-swift",
+      "status": "pending",
+      "evidence": "The Swift binary cannot run the harness until the Swift package lands."
+    },
+    {
+      "id": "macos-parity",
+      "status": "pending",
+      "evidence": "Full macOS parity has not landed on swift-main."
+    },
+    {
+      "id": "linux-static-sdk",
+      "status": "pending",
+      "evidence": "Linux static SDK release support has not landed on swift-main."
+    },
+    {
+      "id": "performance-startup",
+      "status": "pending",
+      "evidence": "Install-time and shim-startup gates have not landed on swift-main."
+    },
+    {
+      "id": "rust-legacy-archive",
+      "status": "pending",
+      "evidence": "The rust-legacy archive branch has not been prepared."
+    }
+  ]
+}

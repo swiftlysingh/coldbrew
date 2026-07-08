@@ -1,0 +1,27 @@
+name: Swift cutover prep
+
+on:
+  pull_request:
+    branches:
+      - swift-main
+    paths:
+      - ".github/scripts/check-swift-cutover.py"
+      - ".github/swift-cutover-gates.json"
+      - ".github/workflows/swift-cutover-prep.yml"
+      - ".github/workflows/release.yml"
+      - "Package.swift"
+      - "swift/**"
+      - "docs/swift-cutover-prep.md"
+      - "README.md"
+  workflow_dispatch:
+
+jobs:
+  gates:
+    name: Cutover gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate cutover metadata
+        run: python3 .github/scripts/check-swift-cutover.py
