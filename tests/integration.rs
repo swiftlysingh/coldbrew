@@ -163,14 +163,23 @@ fn assert_contains(haystack: &str, needle: &str) {
     );
 }
 
+fn assert_contains_any(haystack: &str, needles: &[&str]) {
+    assert!(
+        needles.iter().any(|needle| haystack.contains(needle)),
+        "expected output to contain one of {:?}\noutput:\n{}",
+        needles,
+        haystack
+    );
+}
+
 #[test]
 fn help_shows_cli_usage() {
     let harness = CrewHarness::new();
     let output = harness.run(["--help"]);
 
     assert_success(&output);
-    assert_contains(&output.stdout, "Usage:");
-    assert_contains(&output.stdout, "Commands:");
+    assert_contains_any(&output.stdout, &["Usage:", "USAGE:"]);
+    assert_contains_any(&output.stdout, &["Commands:", "SUBCOMMANDS:"]);
     assert_contains(&output.stdout, "install");
 }
 
@@ -180,8 +189,8 @@ fn no_command_prints_help() {
     let output = harness.run(std::iter::empty::<&str>());
 
     assert_success(&output);
-    assert_contains(&output.stdout, "Usage:");
-    assert_contains(&output.stdout, "Commands:");
+    assert_contains_any(&output.stdout, &["Usage:", "USAGE:"]);
+    assert_contains_any(&output.stdout, &["Commands:", "SUBCOMMANDS:"]);
 }
 
 #[test]
