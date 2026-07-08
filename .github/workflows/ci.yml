@@ -6,7 +6,7 @@ on:
 jobs:
   test:
     name: Test (${{ matrix.name }})
-    runs-on: ${{ matrix.self_hosted }}
+    runs-on: ${{ matrix.github }}
     strategy:
       fail-fast: false
       matrix:
