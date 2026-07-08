@@ -221,7 +221,12 @@ struct List: ParsableCommand {
             }
             return
         }
-        for package in try cellar.listPackages() {
+        let packages = try cellar.listPackages()
+        if packages.isEmpty {
+            print("No packages installed")
+            return
+        }
+        for package in packages {
             print(namesOnly ? package.name : "\(package.name) \(package.version)")
         }
     }
