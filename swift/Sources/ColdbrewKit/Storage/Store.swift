@@ -52,6 +52,29 @@ public struct Store: Sendable {
         return StoreEntry(path: entry, sizeBytes: try directorySize(entry), created: true)
     }
 
+    @discardableResult
+    public func ensureEntry(sha256: String, bottleArchive: URL) throws -> StoreEntry {
+        let entry = paths.storeEntry(sha256: sha256)
+        if FileManager.default.fileExists(atPath: entry.path) {
+            return StoreEntry(path: entry, sizeBytes: try directorySize(entry), created: false)
+        }
+
+        try FileManager.default.createDirectory(at: entry.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let lock = try FileLock(path: paths.storeLock(sha256: sha256))
+        _ = lock
+        if FileManager.default.fileExists(atPath: entry.path) {
+            return StoreEntry(path: entry, sizeBytes: try directorySize(entry), created: false)
+        }
+
+        do {
+            let result = try BottleExtractor().extract(bottleArchive, to: entry)
+            return StoreEntry(path: result.path, sizeBytes: result.sizeBytes, created: true)
+        } catch {
+            try? FileManager.default.removeItem(at: entry)
+            throw error
+        }
+    }
+
     public func removeEntry(sha256: String) throws {
         let entry = paths.storeEntry(sha256: sha256)
         if FileManager.default.fileExists(atPath: entry.path) {
