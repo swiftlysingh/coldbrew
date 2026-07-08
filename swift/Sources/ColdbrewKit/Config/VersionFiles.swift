@@ -23,7 +23,7 @@ public struct VersionFileDetector: Sendable {
             }
 
             let parent = current.deletingLastPathComponent()
-            if parent.path == current.path {
+            if current.path == "/" || parent.standardizedFileURL.path == current.standardizedFileURL.path {
                 break
             }
             current = parent

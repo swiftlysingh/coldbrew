@@ -1,6 +1,6 @@
 import Foundation
 
-enum SHA256 {
+enum LockfileChecksum {
     static func hash(_ string: String) -> String {
         var message = Array(string.utf8)
         let bitLength = UInt64(message.count) * 8

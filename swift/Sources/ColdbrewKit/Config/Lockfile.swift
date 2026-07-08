@@ -38,7 +38,7 @@ public struct Lockfile: Equatable, Sendable {
     }
 
     public static func hash(_ string: String) -> String {
-        SHA256.hash(string)
+        LockfileChecksum.hash(string)
     }
 
     static func parse(_ text: String) throws -> Lockfile {

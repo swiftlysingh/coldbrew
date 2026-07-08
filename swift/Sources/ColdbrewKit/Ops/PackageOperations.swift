@@ -128,13 +128,6 @@ public struct PackageOperations: Sendable {
     }
 }
 
-public func parsePackageSpec(_ spec: String) -> (String, String?) {
-    if let index = spec.firstIndex(of: "@") {
-        return (String(spec[..<index]), String(spec[spec.index(after: index)...]))
-    }
-    return (spec, nil)
-}
-
 struct SimpleGlobalConfig: Equatable {
     var defaults: [String: String] = [:]
     var pins: [String: String] = [:]

@@ -16,6 +16,7 @@ public struct Formula: Codable, Equatable, Sendable {
     public var recommendedDependencies: [String]
     public var kegOnly: Bool
     public var revision: UInt32
+    public var versionScheme: UInt32
     public var caveats: String?
 
     enum CodingKeys: String, CodingKey {
@@ -34,6 +35,7 @@ public struct Formula: Codable, Equatable, Sendable {
         case recommendedDependencies = "recommended_dependencies"
         case kegOnly = "keg_only"
         case revision
+        case versionScheme = "version_scheme"
         case caveats
     }
 
@@ -53,6 +55,7 @@ public struct Formula: Codable, Equatable, Sendable {
         recommendedDependencies: [String] = [],
         kegOnly: Bool = false,
         revision: UInt32 = 0,
+        versionScheme: UInt32 = 0,
         caveats: String? = nil
     ) {
         self.name = name
@@ -70,14 +73,15 @@ public struct Formula: Codable, Equatable, Sendable {
         self.recommendedDependencies = recommendedDependencies
         self.kegOnly = kegOnly
         self.revision = revision
+        self.versionScheme = versionScheme
         self.caveats = caveats
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.name = try container.decode(String.self, forKey: .name)
-        self.fullName = try container.decode(String.self, forKey: .fullName)
-        self.tap = try container.decodeIfPresent(String.self, forKey: .tap) ?? ""
+        self.fullName = try container.decodeIfPresent(String.self, forKey: .fullName) ?? name
+        self.tap = try container.decodeIfPresent(String.self, forKey: .tap) ?? "homebrew/core"
         self.desc = try container.decodeIfPresent(String.self, forKey: .desc)
         self.homepage = try container.decodeIfPresent(String.self, forKey: .homepage)
         self.license = try container.decodeIfPresent(String.self, forKey: .license)
@@ -90,6 +94,7 @@ public struct Formula: Codable, Equatable, Sendable {
         self.recommendedDependencies = try container.decodeIfPresent([String].self, forKey: .recommendedDependencies) ?? []
         self.kegOnly = try container.decodeIfPresent(Bool.self, forKey: .kegOnly) ?? false
         self.revision = try container.decodeIfPresent(UInt32.self, forKey: .revision) ?? 0
+        self.versionScheme = try container.decodeIfPresent(UInt32.self, forKey: .versionScheme) ?? 0
         self.caveats = try container.decodeIfPresent(String.self, forKey: .caveats)
     }
 

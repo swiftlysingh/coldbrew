@@ -56,6 +56,10 @@ public struct BottleFile: Codable, Equatable, Sendable {
     public func ghcrURL(name: String) -> String {
         "https://ghcr.io/v2/homebrew/core/\(name)/blobs/sha256:\(sha256)"
     }
+
+    public var isRelocatable: Bool {
+        cellar.isRelocatable
+    }
 }
 
 public struct CellarType: Codable, Equatable, ExpressibleByStringLiteral, Sendable {

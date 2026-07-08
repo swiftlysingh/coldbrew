@@ -187,20 +187,3 @@ public struct Cache: Sendable {
         }.sorted { $0.label < $1.label }
     }
 }
-
-public func formatBytes(_ bytes: UInt64) -> String {
-    let kb: UInt64 = 1024
-    let mb = kb * 1024
-    let gb = mb * 1024
-
-    if bytes >= gb {
-        return String(format: "%.2f GB", Double(bytes) / Double(gb))
-    }
-    if bytes >= mb {
-        return String(format: "%.2f MB", Double(bytes) / Double(mb))
-    }
-    if bytes >= kb {
-        return String(format: "%.2f KB", Double(bytes) / Double(kb))
-    }
-    return "\(bytes) B"
-}
