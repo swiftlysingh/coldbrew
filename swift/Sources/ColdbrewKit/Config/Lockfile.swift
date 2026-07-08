@@ -126,7 +126,7 @@ public struct LockedPackage: Equatable, Sendable {
 }
 
 extension ProjectConfig {
-    func tomlForHash() -> String {
+    public func tomlForHash() -> String {
         toml()
     }
 }

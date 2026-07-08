@@ -4,6 +4,12 @@ public struct RuntimeDependencyRecord: Codable, Equatable, Sendable {
     public var name: String
     public var version: String
     public var path: String
+
+    public init(name: String, version: String, path: String) {
+        self.name = name
+        self.version = version
+        self.path = path
+    }
 }
 
 public struct InstalledPackageRecord: Codable, Equatable, Sendable {

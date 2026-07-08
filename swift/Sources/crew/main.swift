@@ -1,17 +1,6 @@
 import ArgumentParser
 import ColdbrewKit
-
-struct NotImplemented: Error, CustomStringConvertible {
-    let command: String
-
-    var description: String {
-        "\(command) is not implemented in the Swift migration yet"
-    }
-}
-
-func notImplemented(_ command: String) throws {
-    throw NotImplemented(command: command)
-}
+import Foundation
 
 enum CrewCompletionShell: String, ExpressibleByArgument {
     case bash
@@ -67,7 +56,8 @@ struct Update: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Update the package index from Homebrew")
 
     func run() throws {
-        try notImplemented("update")
+        let count = try FormulaIndex(paths: Paths()).update(from: HomebrewAPI())
+        print("Updated \(count) formulae")
     }
 }
 
@@ -81,7 +71,14 @@ struct Search: ParsableCommand {
     var extended = false
 
     func run() throws {
-        try notImplemented("search")
+        let matches = try FormulaIndex(paths: Paths()).search(query)
+        for formula in matches {
+            if extended, let desc = formula.desc {
+                print("\(formula.name): \(desc)")
+            } else {
+                print(formula.name)
+            }
+        }
     }
 }
 
@@ -95,7 +92,21 @@ struct Info: ParsableCommand {
     var format = "text"
 
     func run() throws {
-        try notImplemented("info")
+        let formula = try FormulaIndex(paths: Paths()).formula(named: package)
+            ?? HomebrewAPI().fetchFormula(named: package)
+        if format == "json" {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            print(String(decoding: try encoder.encode(formula), as: UTF8.self))
+        } else {
+            print("\(formula.name) \(formula.versionWithRevision)")
+            if let desc = formula.desc {
+                print(desc)
+            }
+            if let homepage = formula.homepage {
+                print(homepage)
+            }
+        }
     }
 }
 
@@ -123,8 +134,16 @@ struct Install: ParsableCommand {
         }
     }
 
-    func run() throws {
-        try notImplemented("install")
+    func run() async throws {
+        let paths = try Paths()
+        let requests = try installRequests(for: packages, paths: paths, includeDependencies: !skipDeps)
+        let result = try await InstallManager(paths: paths).install(
+            requests,
+            options: InstallOptions(force: force, maxConcurrentDownloads: GlobalConfig.load(from: paths.configFile).settings.parallelDownloads)
+        )
+        for package in result.packages {
+            print("Installed \(package.name) \(package.version)")
+        }
     }
 }
 
@@ -147,7 +166,13 @@ struct Uninstall: ParsableCommand {
     }
 
     func run() throws {
-        try notImplemented("uninstall")
+        let manager = UninstallCleanupManager(paths: try Paths())
+        for package in packages {
+            let result = try manager.uninstall(package, options: UninstallOptions(all: all, withDeps: withDeps))
+            for removed in result.removed {
+                print("Uninstalled \(removed.name) \(removed.version)")
+            }
+        }
     }
 }
 
@@ -160,8 +185,22 @@ struct Upgrade: ParsableCommand {
     @Flag(name: .shortAndLong, help: "Skip interactive selection")
     var yes = false
 
-    func run() throws {
-        try notImplemented("upgrade")
+    func run() async throws {
+        let paths = try Paths()
+        let available = try installedUpgradeRequests(paths: paths, filter: packages)
+        let manager = UpgradeManager(paths: paths)
+        let plan = try manager.plan(available: available, filter: packages)
+        if plan.upgrades.isEmpty {
+            print("No upgrades available")
+            return
+        }
+        for upgrade in plan.upgrades {
+            print("\(upgrade.name) \(upgrade.currentVersion) -> \(upgrade.newVersion)")
+        }
+        let result = try await manager.apply(plan, available: available, yes: yes)
+        for upgrade in result.upgraded {
+            print("Upgraded \(upgrade.name) to \(upgrade.newVersion)")
+        }
     }
 }
 
@@ -175,7 +214,16 @@ struct List: ParsableCommand {
     var versions: String?
 
     func run() throws {
-        try notImplemented("list")
+        let cellar = Cellar(paths: try Paths())
+        if let package = versions {
+            for version in try cellar.versions(name: package) {
+                print(version)
+            }
+            return
+        }
+        for package in try cellar.listPackages() {
+            print(namesOnly ? package.name : "\(package.name) \(package.version)")
+        }
     }
 }
 
@@ -186,7 +234,14 @@ struct Which: ParsableCommand {
     var binary: String
 
     func run() throws {
-        try notImplemented("which")
+        switch try PackageOperations(paths: try Paths()).which(binary) {
+        case .shim(_, let package, let path, _):
+            print("\(binary): \(package) (\(path.path))")
+        case .binary(_, let package, let version, let path):
+            print("\(binary): \(package) \(version) (\(path.path))")
+        case .notFound:
+            throw ColdbrewError.pathNotFound(binary)
+        }
     }
 }
 
@@ -197,7 +252,8 @@ struct Pin: ParsableCommand {
     var package: String
 
     func run() throws {
-        try notImplemented("pin")
+        try PackageOperations(paths: try Paths()).pin(package)
+        print("Pinned \(package)")
     }
 }
 
@@ -208,7 +264,8 @@ struct Unpin: ParsableCommand {
     var package: String
 
     func run() throws {
-        try notImplemented("unpin")
+        let removed = try PackageOperations(paths: try Paths()).unpin(package)
+        print(removed ? "Unpinned \(package)" : "\(package) was not pinned")
     }
 }
 
@@ -219,7 +276,20 @@ struct Default: ParsableCommand {
     var package: String
 
     func run() throws {
-        try notImplemented("default")
+        let operations = PackageOperations(paths: try Paths())
+        if package.contains("@") {
+            try operations.setDefault(package)
+            print("Set default \(package)")
+        } else {
+            let result = try operations.defaultVersions(package)
+            if let defaultVersion = result.defaultVersion {
+                print(defaultVersion)
+            } else {
+                for version in result.versions {
+                    print(version)
+                }
+            }
+        }
     }
 }
 
@@ -230,7 +300,9 @@ struct Dependents: ParsableCommand {
     var package: String
 
     func run() throws {
-        try notImplemented("dependents")
+        for dependent in try UninstallCleanupManager(paths: try Paths()).dependents(of: package) {
+            print(dependent)
+        }
     }
 }
 
@@ -241,7 +313,13 @@ struct Init: ParsableCommand {
     var force = false
 
     func run() throws {
-        try notImplemented("init")
+        let path = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("coldbrew.toml")
+        if FileManager.default.fileExists(atPath: path.path), !force {
+            throw ColdbrewError.configError("coldbrew.toml already exists. Use --force to overwrite")
+        }
+        try ProjectConfig().save(to: path)
+        print("Created coldbrew.toml")
     }
 }
 
@@ -249,7 +327,25 @@ struct Lock: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Generate a lockfile from coldbrew.toml")
 
     func run() throws {
-        try notImplemented("lock")
+        guard let projectFile = findProjectFile(startDirectory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)) else {
+            throw ColdbrewError.projectNotFound
+        }
+        let config = try ProjectConfig.load(from: projectFile)
+        let index = FormulaIndex(paths: try Paths())
+        let locked = try config.allPackages().reduce(into: [String: LockedPackage]()) { result, pair in
+            let formula = try index.formula(named: pair.key)
+            result[pair.key] = LockedPackage(
+                version: formula?.versionWithRevision ?? pair.value,
+                sha256: currentBottle(formula)?.file.sha256,
+                bottleTag: currentBottle(formula)?.tag,
+                tap: formula?.tap ?? "homebrew/core",
+                dependencies: formula?.dependencies ?? [],
+                dev: config.devPackages[pair.key] != nil
+            )
+        }
+        try Lockfile(packages: locked, configHash: Lockfile.hash(config.tomlForHash()))
+            .save(to: lockfilePath(projectFile: projectFile))
+        print("Wrote coldbrew.lock")
     }
 }
 
@@ -292,7 +388,7 @@ struct Space: ParsableCommand {
     )
 
     func run() throws {
-        try notImplemented("space")
+        throw CleanExit.helpRequest(self)
     }
 
     struct Show: ParsableCommand {
@@ -302,7 +398,16 @@ struct Space: ParsableCommand {
         var details = false
 
         func run() throws {
-            try notImplemented("space show")
+            let summary = try UninstallCleanupManager(paths: try Paths()).spaceSummary()
+            for category in summary.categories {
+                print("\(category.title): \(formatBytes(category.totalSize))")
+                if details {
+                    for item in category.items {
+                        print("  \(item.label) \(formatBytes(item.size))")
+                    }
+                }
+            }
+            print("Total: \(formatBytes(summary.totalSize))")
         }
     }
 
@@ -316,7 +421,11 @@ struct Space: ParsableCommand {
         var dryRun = false
 
         func run() throws {
-            try notImplemented("space clean")
+            let result = try UninstallCleanupManager(paths: try Paths()).clean(
+                kinds: Set(CleanupKind.allCases),
+                dryRun: dryRun || !all
+            )
+            print("\(dryRun || !all ? "Would remove" : "Removed") \(result.removed) items, \(formatBytes(result.freed))")
         }
     }
 }
@@ -331,7 +440,8 @@ struct Link: ParsableCommand {
     var force = false
 
     func run() throws {
-        try notImplemented("link")
+        let result = try PackageOperations(paths: try Paths()).link(package, force: force)
+        print("Linked \(result.package) \(result.version)")
     }
 }
 
@@ -342,7 +452,8 @@ struct Unlink: ParsableCommand {
     var package: String
 
     func run() throws {
-        try notImplemented("unlink")
+        let result = try PackageOperations(paths: try Paths()).unlink(package)
+        print("Unlinked \(result.package) \(result.version)")
     }
 }
 
@@ -390,10 +501,100 @@ struct Exec: ParsableCommand {
     @Argument(help: "Binary name")
     var binary: String
 
-    @Argument(parsing: .unconditionalRemaining, help: "Arguments to pass to the binary")
+    @Argument(parsing: .captureForPassthrough, help: "Arguments to pass to the binary")
     var args: [String] = []
 
     func run() throws {
-        try notImplemented("exec")
+        let paths = try Paths()
+        let config = try GlobalConfig.load(from: paths.configFile)
+        let projectVersions = try findProjectFile(startDirectory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
+            .map { try ProjectConfig.load(from: $0).allPackages() }
+        let binaryURL = try ShimManager(paths: paths).resolveBinary(
+            package: package,
+            binary: binary,
+            defaults: config.defaults,
+            projectVersions: projectVersions
+        )
+        let process = Process()
+        process.executableURL = binaryURL
+        var forwardedArgs = args
+        if forwardedArgs.first == "--" {
+            forwardedArgs.removeFirst()
+        }
+        process.arguments = forwardedArgs
+        try process.run()
+        process.waitUntilExit()
+        throw ExitCode(process.terminationStatus)
     }
+}
+
+private func installRequests(for packages: [String], paths: Paths, includeDependencies: Bool) throws -> [InstallRequest] {
+    let index = FormulaIndex(paths: paths)
+    var requests: [InstallRequest] = []
+    var seen: Set<String> = []
+
+    func add(_ name: String, installedFor: String?) throws {
+        guard !seen.contains(name) else { return }
+        guard let formula = try index.formula(named: name) else {
+            throw ColdbrewError.packageNotFound(name)
+        }
+        if includeDependencies {
+            for dependency in formula.dependencies {
+                try add(dependency, installedFor: name)
+            }
+        }
+        guard let bottle = currentBottle(formula) else {
+            throw ColdbrewError.noBottleAvailable(package: name, platform: currentPlatform().bottleTags.joined(separator: ","))
+        }
+        requests.append(InstallRequest(
+            name: formula.name,
+            version: formula.versionWithRevision,
+            bottleURL: URL(string: bottle.file.url) ?? URL(fileURLWithPath: bottle.file.url),
+            sha256: bottle.file.sha256,
+            tag: bottle.tag,
+            tap: formula.tap,
+            binaries: [binaryName(for: formula.name)],
+            runtimeDependencies: formula.dependencies.map {
+                RuntimeDependencyRecord(name: $0, version: "", path: paths.cellarDir.appendingPathComponent($0).path)
+            },
+            installedAsDependency: installedFor != nil,
+            installedFor: installedFor
+        ))
+        seen.insert(name)
+    }
+
+    for package in packages {
+        try add(package, installedFor: nil)
+    }
+    return requests
+}
+
+private func installedUpgradeRequests(paths: Paths, filter: [String]) throws -> [InstallRequest] {
+    let installedNames = try Set(Cellar(paths: paths).listPackages().map(\.name))
+    let names = filter.isEmpty ? Array(installedNames) : filter
+    return try installRequests(for: names, paths: paths, includeDependencies: false)
+}
+
+private func currentBottle(_ formula: Formula?) -> (tag: String, file: BottleFile)? {
+    formula?.bottle.stable?.bestForPlatform(tags: currentPlatform().bottleTags)
+}
+
+private func currentPlatform() -> Platform {
+    #if os(Linux)
+    let os = Platform.OS.linux
+    #else
+    let os = Platform.OS.macOS
+    #endif
+
+    #if arch(x86_64)
+    let arch = Platform.Architecture.x86_64
+    #else
+    let arch = Platform.Architecture.arm64
+    #endif
+
+    return Platform(os: os, architecture: arch)
+}
+
+private func binaryName(for package: String) -> String {
+    package.split(separator: "@", maxSplits: 1).first.map(String.init) ?? package
 }
