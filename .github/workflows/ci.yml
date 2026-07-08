@@ -27,6 +27,9 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Ensure Rust components
+        run: rustup component add rustfmt clippy
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
