@@ -10,6 +10,7 @@ import Testing
     #expect(try connection.string("PRAGMA journal_mode")?.lowercased() == "wal")
     #expect(try connection.int64("PRAGMA synchronous") == 1)
     #expect(try connection.int64("PRAGMA foreign_keys") == 1)
+    #expect(try connection.int64("PRAGMA busy_timeout") == 5000)
 
     let tables = Set(try connection.rows("SELECT name FROM sqlite_master WHERE type = 'table'").compactMap { $0.text(0) })
     #expect(tables.contains("api_cache"))
