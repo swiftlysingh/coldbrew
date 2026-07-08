@@ -66,8 +66,8 @@ import Testing
     #expect(orphans.first?.sizeBytes == 2000)
 
     try database.removeStoreRef(connection, sha256: "sha256_referenced", package: "jq", version: "1.7.1")
-    #expect(try database.listOrphanedStoreEntries(connection).map(\.sha256) == ["sha256_orphan", "sha256_referenced"])
+    #expect(try database.listOrphanedStoreEntries(connection).map { $0.sha256 } == ["sha256_orphan", "sha256_referenced"])
 
     try database.deleteStoreEntry(connection, sha256: "sha256_orphan")
-    #expect(try database.listOrphanedStoreEntries(connection).map(\.sha256) == ["sha256_referenced"])
+    #expect(try database.listOrphanedStoreEntries(connection).map { $0.sha256 } == ["sha256_referenced"])
 }
