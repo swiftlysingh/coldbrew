@@ -175,6 +175,7 @@ public struct Database: Sendable {
         try connection.execute("PRAGMA journal_mode = WAL")
         try connection.execute("PRAGMA synchronous = NORMAL")
         try connection.execute("PRAGMA foreign_keys = ON")
+        try connection.execute("PRAGMA busy_timeout = 5000")
     }
 
     private func migrate(_ connection: SQLiteConnection) throws {
@@ -257,6 +258,7 @@ public final class SQLiteConnection {
             throw ColdbrewError.database(message)
         }
         self.db = handle
+        sqlite3_busy_timeout(db, 5000)
     }
 
     deinit {
