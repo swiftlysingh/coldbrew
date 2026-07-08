@@ -14,6 +14,7 @@ let package = Package(
     targets: [
         .target(
             name: "ColdbrewKit",
+            dependencies: ["CSQLite"],
             linkerSettings: [
                 .linkedLibrary("sqlite3"),
             ]
@@ -25,6 +26,13 @@ let package = Package(
         .testTarget(
             name: "ColdbrewKitTests",
             dependencies: ["ColdbrewKit"]
+        ),
+        .systemLibrary(
+            name: "CSQLite",
+            pkgConfig: "sqlite3",
+            providers: [
+                .apt(["libsqlite3-dev"]),
+            ]
         ),
     ]
 )
