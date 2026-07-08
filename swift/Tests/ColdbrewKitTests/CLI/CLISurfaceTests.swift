@@ -81,6 +81,13 @@ import Testing
     }
 }
 
+@Test func completionsCommandUsesArgumentParserGenerator() throws {
+    let output = try runCrew("completions", "zsh")
+
+    #expect(output.status == 0)
+    #expect(output.text.contains("#compdef crew"))
+}
+
 private struct CrewOutput {
     let status: Int32
     let text: String

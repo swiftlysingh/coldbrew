@@ -13,7 +13,7 @@ func notImplemented(_ command: String) throws {
     throw NotImplemented(command: command)
 }
 
-enum CompletionShell: String, ExpressibleByArgument {
+enum CrewCompletionShell: String, ExpressibleByArgument {
     case bash
     case elvish
     case fish
@@ -263,7 +263,25 @@ struct Tap: ParsableCommand {
     var remove = false
 
     func run() throws {
-        try notImplemented("tap")
+        let manager = TapManager(paths: try Paths())
+        if let tap {
+            if remove {
+                try manager.remove(tap)
+                print("Removed tap '\(tap)'")
+            } else {
+                let added = try manager.add(tap)
+                print("Added tap '\(added.fullName)'")
+            }
+        } else {
+            let taps = try manager.list()
+            if taps.isEmpty {
+                print("No taps installed")
+            } else {
+                for tap in taps {
+                    print(tap.fullName)
+                }
+            }
+        }
     }
 }
 
@@ -332,7 +350,17 @@ struct Doctor: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Check system for potential problems")
 
     func run() throws {
-        try notImplemented("doctor")
+        let report = DoctorChecker(paths: try Paths()).run()
+        if report.isHealthy {
+            print("Your Coldbrew installation looks good!")
+            return
+        }
+        for issue in report.issues {
+            print("issue: \(issue)")
+        }
+        for warning in report.warnings {
+            print("warning: \(warning)")
+        }
     }
 }
 
@@ -340,10 +368,13 @@ struct Completions: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Generate shell completions")
 
     @Argument(help: "Shell to generate completions for")
-    var shell: CompletionShell
+    var shell: CrewCompletionShell
 
     func run() throws {
-        try notImplemented("completions")
+        guard let completionShell = ArgumentParser.CompletionShell(rawValue: shell.rawValue) else {
+            throw ValidationError("Unsupported completion shell '\(shell.rawValue)'")
+        }
+        print(Crew.completionScript(for: completionShell))
     }
 }
 
