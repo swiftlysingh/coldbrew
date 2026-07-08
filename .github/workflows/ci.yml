@@ -6,7 +6,7 @@ on:
 jobs:
   test:
     name: Test (${{ matrix.name }})
-    runs-on: ${{ matrix.self_hosted }}
+    runs-on: ${{ matrix.github }}
     strategy:
       fail-fast: false
       matrix:
@@ -41,7 +41,7 @@ jobs:
 
   harness-rust:
     name: Harness against Rust
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -84,12 +84,24 @@ jobs:
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build
+      - name: Check Swift toolchain
+        id: swift-toolchain
         if: steps.swift-package.outputs.present == 'true'
+        shell: bash
+        run: |
+          if command -v swift >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Swift toolchain not available on this runner; PR024 owns the required Linux Static SDK gate"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        if: steps.swift-package.outputs.present == 'true' && steps.swift-toolchain.outputs.present == 'true'
         working-directory: swift
         run: swift build
 
       - name: Test
-        if: steps.swift-package.outputs.present == 'true'
+        if: steps.swift-package.outputs.present == 'true' && steps.swift-toolchain.outputs.present == 'true'
         working-directory: swift
         run: swift test
