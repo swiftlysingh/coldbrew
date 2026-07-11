@@ -14,6 +14,10 @@ pub struct Paths {
 impl Paths {
     /// Create a new Paths instance with the default root (~/.coldbrew)
     pub fn new() -> Result<Self> {
+        if let Some(root) = coldbrew_home_override(std::env::var_os("COLDBREW_HOME")) {
+            return Ok(Self { root });
+        }
+
         let base_dirs = BaseDirs::new().ok_or_else(|| {
             ColdbrewError::Other("Could not determine home directory".to_string())
         })?;
@@ -204,6 +208,10 @@ impl Paths {
     }
 }
 
+fn coldbrew_home_override(value: Option<std::ffi::OsString>) -> Option<PathBuf> {
+    value.filter(|path| !path.is_empty()).map(PathBuf::from)
+}
+
 impl Default for Paths {
     fn default() -> Self {
         Self::new().expect("Failed to initialize paths")
@@ -279,6 +287,16 @@ mod tests {
             temp.path().join("cache").join("blobs")
         );
         assert_eq!(paths.store_dir(), temp.path().join("store"));
+    }
+
+    #[test]
+    fn test_coldbrew_home_override_ignores_empty_values() {
+        assert_eq!(
+            coldbrew_home_override(Some("/tmp/custom-coldbrew".into())),
+            Some(PathBuf::from("/tmp/custom-coldbrew"))
+        );
+        assert_eq!(coldbrew_home_override(Some("".into())), None);
+        assert_eq!(coldbrew_home_override(None), None);
     }
 
     #[test]
