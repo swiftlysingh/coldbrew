@@ -37,6 +37,7 @@ impl Paths {
             self.root(),
             &self.bin_dir(),
             &self.cellar_dir(),
+            &self.opt_dir(),
             &self.cache_dir(),
             &self.cache_blobs_dir(),
             &self.taps_dir(),
@@ -70,6 +71,11 @@ impl Paths {
     /// Cellar directory for installed packages (~/.coldbrew/cellar)
     pub fn cellar_dir(&self) -> PathBuf {
         self.root.join("cellar")
+    }
+
+    /// Stable links to installed package versions (~/.coldbrew/opt)
+    pub fn opt_dir(&self) -> PathBuf {
+        self.root.join("opt")
     }
 
     /// Cache directory for downloads (~/.coldbrew/cache)
@@ -136,6 +142,11 @@ impl Paths {
     /// e.g., ~/.coldbrew/cellar/jq/1.7.1
     pub fn cellar_package(&self, name: &str, version: &str) -> PathBuf {
         self.cellar_dir().join(name).join(version)
+    }
+
+    /// Stable link for a package (~/.coldbrew/opt/jq)
+    pub fn opt_package(&self, name: &str) -> PathBuf {
+        self.opt_dir().join(name)
     }
 
     /// Get the tap directory for a specific tap
@@ -281,6 +292,7 @@ mod tests {
 
         assert_eq!(paths.bin_dir(), temp.path().join("bin"));
         assert_eq!(paths.cellar_dir(), temp.path().join("cellar"));
+        assert_eq!(paths.opt_dir(), temp.path().join("opt"));
         assert_eq!(paths.cache_dir(), temp.path().join("cache"));
         assert_eq!(
             paths.cache_blobs_dir(),
@@ -320,6 +332,7 @@ mod tests {
 
         assert!(paths.bin_dir().exists());
         assert!(paths.cellar_dir().exists());
+        assert!(paths.opt_dir().exists());
         assert!(paths.cache_dir().exists());
         assert!(paths.cache_blobs_dir().exists());
         assert!(paths.store_dir().exists());
