@@ -1165,6 +1165,7 @@ async fn install_single(
 
     let metadata = PackageMetadata::new(installed.clone(), bottle_plan.file.url.clone());
     ctx.cellar.save_metadata(&metadata)?;
+    ctx.cellar.update_opt_link(name)?;
 
     let total_duration = install_start.elapsed();
     if let Ok(mut metrics) = ctx.metrics.lock() {
