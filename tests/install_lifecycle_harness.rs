@@ -139,7 +139,9 @@ fn install_force_reinstalls_existing_package() {
     let harness = Harness::new();
 
     assert_success(&harness.run(["install", "hello"]));
-    let marker = harness.cellar_package("hello", "1.0.0").join("stale-marker");
+    let marker = harness
+        .cellar_package("hello", "1.0.0")
+        .join("stale-marker");
     std::fs::write(&marker, "must be replaced").expect("write replacement marker");
     assert_success(&harness.run(["install", "--force", "hello"]));
     assert!(

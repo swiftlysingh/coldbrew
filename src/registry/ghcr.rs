@@ -274,7 +274,12 @@ impl GhcrClient {
             .unwrap_or(false)
     }
 
-    async fn download_plain_url<F>(&self, url: &str, dest: &Path, progress_callback: F) -> Result<()>
+    async fn download_plain_url<F>(
+        &self,
+        url: &str,
+        dest: &Path,
+        progress_callback: F,
+    ) -> Result<()>
     where
         F: Fn(u64, u64),
     {

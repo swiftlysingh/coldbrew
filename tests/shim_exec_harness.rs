@@ -123,7 +123,10 @@ fn hidden_exec_forwards_arguments_to_real_binary() {
     let harness = Harness::new();
 
     assert_success(&harness.run(["install", "hello"]));
-    assert_contains(&harness.run(["exec", "hello", "hello", "--", "arg1", "arg2"]), "arg1");
+    assert_contains(
+        &harness.run(["exec", "hello", "hello", "--", "arg1", "arg2"]),
+        "arg1",
+    );
 }
 
 #[test]
@@ -134,7 +137,8 @@ fn version_file_takes_precedence_over_global_default_and_latest() {
     assert_success(&harness.run(["install", "multi@1"]));
     assert_success(&harness.run(["install", "multi@2"]));
     assert_success(&harness.run(["default", "multi@1"]));
-    std::fs::write(harness.project.join(".tool-versions"), "multi 2.0.0\n").expect("write version file");
+    std::fs::write(harness.project.join(".tool-versions"), "multi 2.0.0\n")
+        .expect("write version file");
 
     assert_contains(&harness.run(["exec", "multi", "multi"]), "multi fixture 2");
 }

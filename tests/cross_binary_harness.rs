@@ -141,7 +141,11 @@ struct SchemaFingerprint {
 }
 
 fn schema_fingerprint(db_file: &Path) -> SchemaFingerprint {
-    assert!(db_file.exists(), "expected database at {}", db_file.display());
+    assert!(
+        db_file.exists(),
+        "expected database at {}",
+        db_file.display()
+    );
     let conn = Connection::open(db_file).expect("open coldbrew database");
     let user_version: i32 = conn
         .pragma_query_value(None, "user_version", |row| row.get(0))

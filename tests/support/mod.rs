@@ -70,7 +70,9 @@ fn fixture_bytes(root: &Path, path: &str, base_url: &str) -> Option<(&'static st
 
     let mut bytes = fs::read(file).ok()?;
     let content_type = if relative.ends_with(".json") {
-        let text = String::from_utf8(bytes).ok()?.replace("http://127.0.0.1:0", base_url);
+        let text = String::from_utf8(bytes)
+            .ok()?
+            .replace("http://127.0.0.1:0", base_url);
         bytes = text.into_bytes();
         "application/json"
     } else {

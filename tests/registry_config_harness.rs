@@ -156,11 +156,8 @@ fn init_lock_and_install_from_lockfile() {
     assert_success(&harness.run(["init"]));
     let config = harness.project.join("coldbrew.toml");
     assert!(config.exists(), "init must create coldbrew.toml");
-    fs::write(
-        &config,
-        "[packages]\nhello = \"1.0.0\"\n\n[dev_packages]\n",
-    )
-    .expect("write fixture project config");
+    fs::write(&config, "[packages]\nhello = \"1.0.0\"\n\n[dev_packages]\n")
+        .expect("write fixture project config");
 
     assert_success(&harness.run(["lock"]));
     let lock = fs::read_to_string(harness.project.join("coldbrew.lock")).expect("read lockfile");
@@ -203,6 +200,12 @@ fn tap_lists_empty_state_and_rejects_invalid_name() {
     let invalid = harness.run(["tap", "invalid"]);
     assert_failure(&invalid);
     let message = invalid.combined().to_lowercase();
-    assert!(message.contains("invalid tap"), "unexpected error:\n{message}");
-    assert!(message.contains("user/repo"), "unexpected error:\n{message}");
+    assert!(
+        message.contains("invalid tap"),
+        "unexpected error:\n{message}"
+    );
+    assert!(
+        message.contains("user/repo"),
+        "unexpected error:\n{message}"
+    );
 }

@@ -94,7 +94,8 @@ fn assert_command_listed(help: &str, command: &str) {
 
 fn assert_command_hidden(help: &str, command: &str) {
     assert!(
-        !help.lines()
+        !help
+            .lines()
             .map(str::trim_start)
             .any(|line| line.starts_with(command)
                 && line[command.len()..]
@@ -198,7 +199,10 @@ fn command_help_exposes_current_flags_and_arguments() {
         (&["space", "--help"], &[&["show"], &["clean"]]),
         (&["space", "show", "--help"], &[&["--details"]]),
         (&["space", "clean", "--help"], &[&["--all"], &["--dry-run"]]),
-        (&["link", "--help"], &[&["<PACKAGE>", "<package>"], &["--force"]]),
+        (
+            &["link", "--help"],
+            &[&["<PACKAGE>", "<package>"], &["--force"]],
+        ),
         (&["unlink", "--help"], &[&["<PACKAGE>", "<package>"]]),
         (&["doctor", "--help"], &[&["Usage:", "USAGE:"]]),
         (&["completions", "--help"], &[&["<SHELL>", "<shell>"]]),
