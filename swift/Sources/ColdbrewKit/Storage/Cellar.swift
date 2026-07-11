@@ -227,6 +227,20 @@ public struct Cellar: Sendable {
         try versions(name: name).last
     }
 
+    public func refreshOptLink(name: String) throws {
+        let link = paths.optDir.appendingPathComponent(name)
+        if FileManager.default.fileExists(atPath: link.path)
+            || (try? FileManager.default.destinationOfSymbolicLink(atPath: link.path)) != nil {
+            try FileManager.default.removeItem(at: link)
+        }
+        guard let version = try latestVersion(name: name) else { return }
+        try FileManager.default.createDirectory(at: paths.optDir, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: link,
+            withDestinationURL: paths.cellarPackage(name, version: version)
+        )
+    }
+
     public func uninstall(name: String, version: String) throws {
         let packageURL = paths.cellarPackage(name, version: version)
         guard FileManager.default.fileExists(atPath: packageURL.path) else {

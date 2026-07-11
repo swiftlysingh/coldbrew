@@ -20,7 +20,7 @@ enum MiniTOML {
             if line.isEmpty { continue }
 
             if line.hasPrefix("[") && line.hasSuffix("]") {
-                section = String(line.dropFirst().dropLast())
+                section = parseSection(String(line.dropFirst().dropLast()))
                 document[section, default: [:]] = document[section, default: [:]]
                 continue
             }
@@ -29,7 +29,7 @@ enum MiniTOML {
                 throw ConfigError.invalidTOML("Missing '=' in line: \(line)")
             }
 
-            let key = line[..<equals].trimmingCharacters(in: .whitespaces)
+            let key = parseKey(String(line[..<equals]))
             let value = line[line.index(after: equals)...].trimmingCharacters(in: .whitespaces)
             document[section, default: [:]][key] = try parseValue(String(value))
         }
@@ -43,7 +43,7 @@ enum MiniTOML {
         if let root = document[""] {
             for key in root.keys.sorted() {
                 if let value = root[key] {
-                    lines.append("\(key) = \(renderValue(value))")
+                    lines.append("\(renderKey(key)) = \(renderValue(value))")
                 }
             }
         }
@@ -51,15 +51,58 @@ enum MiniTOML {
         for section in sectionOrder where section != "" {
             guard let table = document[section], !table.isEmpty else { continue }
             if !lines.isEmpty { lines.append("") }
-            lines.append("[\(section)]")
+            lines.append("[\(renderSection(section))]")
             for key in table.keys.sorted() {
                 if let value = table[key] {
-                    lines.append("\(key) = \(renderValue(value))")
+                    lines.append("\(renderKey(key)) = \(renderValue(value))")
                 }
             }
         }
 
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    private static func parseKey(_ key: String) -> String {
+        let key = key.trimmingCharacters(in: .whitespaces)
+        guard key.hasPrefix("\""), key.hasSuffix("\"") else { return key }
+        return unescapeKey(String(key.dropFirst().dropLast()))
+    }
+
+    private static func parseSection(_ section: String) -> String {
+        section.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+            .map { parseKey(String($0)) }
+            .joined(separator: ".")
+    }
+
+    private static func renderKey(_ key: String) -> String {
+        let isBare = !key.isEmpty && key.unicodeScalars.allSatisfy {
+            (65...90).contains($0.value) || (97...122).contains($0.value)
+                || (48...57).contains($0.value) || $0 == "_" || $0 == "-"
+        }
+        return isBare ? key : "\"\(key.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\""))\""
+    }
+
+    private static func renderSection(_ section: String) -> String {
+        section.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+            .map { renderKey(String($0)) }
+            .joined(separator: ".")
+    }
+
+    private static func unescapeKey(_ key: String) -> String {
+        var result = ""
+        var escaped = false
+        for character in key {
+            if escaped {
+                result.append(character)
+                escaped = false
+            } else if character == "\\" {
+                escaped = true
+            } else {
+                result.append(character)
+            }
+        }
+        if escaped { result.append("\\") }
+        return result
     }
 
     private static func stripComment(_ line: String) -> String {
@@ -124,7 +167,7 @@ enum MiniTOML {
         case .inlineTable(let table):
             let parts = table.keys.sorted().compactMap { key -> String? in
                 guard let value = table[key] else { return nil }
-                return "\(key) = \(renderValue(value))"
+                return "\(renderKey(key)) = \(renderValue(value))"
             }
             return "{ " + parts.joined(separator: ", ") + " }"
         }

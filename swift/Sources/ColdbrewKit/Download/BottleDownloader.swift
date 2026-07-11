@@ -26,6 +26,7 @@ public struct BottleDownloadResult: Equatable, Sendable {
 }
 
 public final class BottleDownloader: Sendable {
+    private static let cachePromotionLock = NSLock()
     private let cache: Cache
     private let session: URLSession
     private let tokenURL: URL
@@ -53,27 +54,20 @@ public final class BottleDownloader: Sendable {
         }
 
         try cache.initialize()
-        let tempURL = cache.blobTempPath(sha256: request.sha256)
-        if FileManager.default.fileExists(atPath: tempURL.path) {
-            try FileManager.default.removeItem(at: tempURL)
-        }
+        let tempURL = cache.blobTempPath(sha256: request.sha256).appendingPathExtension(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
 
         let bytesDownloaded = try await download(request.url, to: tempURL, progress: progress)
-        do {
-            try SHA256.verifyBottle(file: tempURL, expected: request.sha256, package: request.name ?? "bottle")
-            let cached = try cache.moveToCache(from: tempURL, sha256: request.sha256)
-            try cache.recordBlobMetadata(
-                sha256: request.sha256,
-                name: request.name,
-                version: request.version,
-                tag: request.tag,
-                sizeBytes: bytesDownloaded
-            )
-            return BottleDownloadResult(path: cached, bytesDownloaded: bytesDownloaded, downloaded: true)
-        } catch {
-            try? FileManager.default.removeItem(at: tempURL)
-            throw error
-        }
+        try SHA256.verifyBottle(file: tempURL, expected: request.sha256, package: request.name ?? "bottle")
+        let cached = try promoteToCache(tempURL, sha256: request.sha256)
+        try cache.recordBlobMetadata(
+            sha256: request.sha256,
+            name: request.name,
+            version: request.version,
+            tag: request.tag,
+            sizeBytes: bytesDownloaded
+        )
+        return BottleDownloadResult(path: cached, bytesDownloaded: bytesDownloaded, downloaded: true)
     }
 
     public func fetchGhcrToken(repository: String) async throws -> String {
@@ -127,11 +121,23 @@ public final class BottleDownloader: Sendable {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        let (data, response) = try await session.data(for: request)
+        let (downloadedURL, response) = try await session.download(for: request)
         try validateHTTP(response, failure: ColdbrewError.downloadFailed("Bottle download failed"))
-        try data.write(to: destination)
-        progress(UInt64(data.count), UInt64(data.count))
-        return UInt64(data.count)
+        try FileManager.default.moveItem(at: downloadedURL, to: destination)
+        let size = UInt64(try destination.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
+        let total = response.expectedContentLength > 0 ? UInt64(response.expectedContentLength) : size
+        progress(size, total)
+        return size
+    }
+
+    private func promoteToCache(_ tempURL: URL, sha256: String) throws -> URL {
+        Self.cachePromotionLock.lock()
+        defer { Self.cachePromotionLock.unlock() }
+
+        if let cached = cache.cachedPath(sha256: sha256), try SHA256.verify(file: cached, expected: sha256) {
+            return cached
+        }
+        return try cache.moveToCache(from: tempURL, sha256: sha256)
     }
 
     private func validateHTTP(_ response: URLResponse, failure: ColdbrewError) throws {

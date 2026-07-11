@@ -43,3 +43,24 @@ import Testing
     try cellar.uninstall(name: "hello", version: "1.0.0")
     #expect(!cellar.isInstalled(name: "hello", version: "1.0.0"))
 }
+
+@Test func cellarRefreshesOptLinkToLatestInstalledVersion() throws {
+    let paths = Paths(root: temporaryDirectory())
+    try paths.createDirectories()
+    try FileManager.default.createDirectory(at: paths.cellarPackage("hello", version: "1.0.0"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: paths.cellarPackage("hello", version: "2.0.0"), withIntermediateDirectories: true)
+    let cellar = Cellar(paths: paths)
+
+    try cellar.refreshOptLink(name: "hello")
+    #expect(
+        URL(fileURLWithPath: try FileManager.default.destinationOfSymbolicLink(atPath: paths.optDir.appendingPathComponent("hello").path))
+            == paths.cellarPackage("hello", version: "2.0.0")
+    )
+
+    try cellar.uninstall(name: "hello", version: "2.0.0")
+    try cellar.refreshOptLink(name: "hello")
+    #expect(
+        URL(fileURLWithPath: try FileManager.default.destinationOfSymbolicLink(atPath: paths.optDir.appendingPathComponent("hello").path))
+            == paths.cellarPackage("hello", version: "1.0.0")
+    )
+}

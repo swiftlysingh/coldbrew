@@ -130,6 +130,8 @@ public enum ColdbrewError: Error, CustomStringConvertible, LocalizedError, Equat
             "Run 'crew update' to fetch the latest package index"
         case .lockfileNotFound:
             "Run 'crew lock' to create a lockfile from coldbrew.toml"
+        case .lockfileOutOfSync:
+            "Run 'crew lock' to regenerate the lockfile from coldbrew.toml"
         case .projectNotFound:
             "Run 'crew init' to create a coldbrew.toml in this directory"
         case .noBottleAvailable:

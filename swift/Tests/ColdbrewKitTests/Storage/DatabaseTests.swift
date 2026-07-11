@@ -19,6 +19,17 @@ import Testing
     #expect(tables.contains("store_refs"))
 }
 
+@Test func databaseRejectsNewerSchemaWithoutDowngrading() throws {
+    let database = Database(paths: Paths(root: temporaryDirectory()))
+    let existing = try database.connect()
+    try existing.execute("PRAGMA user_version = 4")
+
+    #expect(throws: ColdbrewError.database("Database schema version 4 is newer than supported version 3")) {
+        try database.connect()
+    }
+    #expect(try existing.int64("PRAGMA user_version") == 4)
+}
+
 @Test func databaseRoundTripsApiAndBlobCacheRows() throws {
     let database = Database(paths: Paths(root: temporaryDirectory()))
     let connection = try database.connect()

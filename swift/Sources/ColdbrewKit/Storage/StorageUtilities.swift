@@ -32,20 +32,31 @@ func directorySize(_ url: URL) throws -> UInt64 {
 func copyTree(from source: URL, to destination: URL) throws {
     try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
 
-    let sourcePath = source.resolvingSymlinksInPath().path
-    guard let enumerator = FileManager.default.enumerator(at: source, includingPropertiesForKeys: [.isDirectoryKey]) else {
+    let sourcePath = source.standardizedFileURL.path
+    guard let enumerator = FileManager.default.enumerator(
+        at: source,
+        includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]
+    ) else {
         return
     }
 
     for case let item as URL in enumerator {
-        let itemPath = item.resolvingSymlinksInPath().path
+        let itemPath = item.standardizedFileURL.path
         guard itemPath.hasPrefix(sourcePath + "/") else {
             continue
         }
         let relativePath = String(itemPath.dropFirst(sourcePath.count + 1))
 
         let target = destination.appendingPathComponent(relativePath)
-        let values = try item.resourceValues(forKeys: [.isDirectoryKey])
+        let values = try item.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        if values.isSymbolicLink == true {
+            try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try FileManager.default.createSymbolicLink(
+                atPath: target.path,
+                withDestinationPath: FileManager.default.destinationOfSymbolicLink(atPath: item.path)
+            )
+            continue
+        }
         if values.isDirectory == true {
             try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
             continue

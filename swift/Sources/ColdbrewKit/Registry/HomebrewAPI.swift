@@ -1,12 +1,13 @@
 import Foundation
 
 public let formulaIndexURL = URL(string: "https://formulae.brew.sh/api/formula.json")!
+private let formulaAPIBaseEnv = "COLDBREW_FORMULA_API_BASE"
 
 public struct HomebrewAPI: Sendable {
     public var baseURL: URL
 
-    public init(baseURL: URL = URL(string: "https://formulae.brew.sh/api")!) {
-        self.baseURL = baseURL
+    public init(baseURL: URL? = nil) {
+        self.baseURL = baseURL ?? Self.defaultBaseURL()
     }
 
     public func fetchFormulaIndex() throws -> [Formula] {
@@ -36,5 +37,12 @@ public struct HomebrewAPI: Sendable {
         } catch {
             throw ColdbrewError.io(error.localizedDescription)
         }
+    }
+
+    private static func defaultBaseURL() -> URL {
+        if let override = ProcessInfo.processInfo.environment[formulaAPIBaseEnv], !override.isEmpty {
+            return URL(string: override) ?? URL(fileURLWithPath: override)
+        }
+        return URL(string: "https://formulae.brew.sh/api")!
     }
 }

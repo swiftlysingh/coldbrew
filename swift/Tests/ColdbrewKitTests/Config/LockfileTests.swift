@@ -35,6 +35,18 @@ import Testing
     #expect(loaded.packages["jq"]?.dependencies == ["oniguruma"])
 }
 
+@Test func lockfileQuotesNonBarePackageNames() throws {
+    let lockfile = Lockfile(
+        packages: ["python@3.12": LockedPackage(version: "3.12.11", tap: "homebrew/core")],
+        configHash: "hash"
+    )
+
+    let toml = lockfile.toml()
+
+    #expect(toml.contains("[packages.\"python@3.12\"]"))
+    #expect(try Lockfile.parse(toml).packages["python@3.12"]?.version == "3.12.11")
+}
+
 @Test func lockfileSyncUsesProjectConfigHash() {
     var config = ProjectConfig()
     config.addPackage("jq", version: "1.7.1", dev: false)

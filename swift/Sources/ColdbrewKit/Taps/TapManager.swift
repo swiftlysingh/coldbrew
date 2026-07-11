@@ -75,21 +75,18 @@ public struct TapManager: Sendable {
     }
 
     private func runGit(_ arguments: [String]) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["git"] + arguments
-        let stderr = Pipe()
-        process.standardError = stderr
         do {
-            try process.run()
+            let result = try ProcessRunner.capture("git", arguments)
+            guard result.status == 0 else {
+                let message = String(decoding: result.stderr, as: UTF8.self)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                throw ColdbrewError.git(message)
+            }
+        } catch let error as ColdbrewError {
+            if case .git = error { throw error }
+            throw ColdbrewError.git(error.description)
         } catch {
             throw ColdbrewError.git(error.localizedDescription)
-        }
-        process.waitUntilExit()
-        guard process.terminationStatus == 0 else {
-            let message = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            throw ColdbrewError.git(message)
         }
     }
 }

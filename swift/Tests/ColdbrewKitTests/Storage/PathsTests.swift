@@ -85,3 +85,20 @@ import Darwin
     #expect(findProjectFile(startDirectory: subdirectory)?.path == project.path)
     #expect(lockfilePath(projectFile: project).path == root.appendingPathComponent("coldbrew.lock").path)
 }
+
+@Test func coldbrewPathContainmentRejectsTraversalAndSymlinkEscapes() throws {
+    let parent = temporaryDirectory()
+    let root = parent.appendingPathComponent("root", isDirectory: true)
+    let outside = parent.appendingPathComponent("outside", isDirectory: true)
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(
+        at: root.appendingPathComponent("escape"),
+        withDestinationURL: outside
+    )
+
+    let paths = Paths(root: root)
+    #expect(paths.isColdbrewPath(root.appendingPathComponent("bin/../cellar/jq")))
+    #expect(!paths.isColdbrewPath(root.appendingPathComponent("../outside")))
+    #expect(!paths.isColdbrewPath(root.appendingPathComponent("escape/package")))
+}

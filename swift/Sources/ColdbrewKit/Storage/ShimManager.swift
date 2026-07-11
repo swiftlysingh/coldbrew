@@ -71,7 +71,10 @@ public struct ShimManager: Sendable {
         defaults: [String: String],
         projectVersions: [String: String]? = nil
     ) throws -> URL {
-        guard let version = projectVersions?[package] ?? defaults[package] else {
+        guard let version = try projectVersions?[package]
+            ?? defaults[package]
+            ?? Cellar(paths: paths).latestVersion(name: package)
+        else {
             throw ColdbrewError.noDefaultVersion(package)
         }
 
@@ -88,7 +91,7 @@ public struct ShimManager: Sendable {
         # Coldbrew shim for \(package)/\(binary)
         # This shim resolves the correct version and executes the real binary
 
-        exec crew exec \(package) \(binary) "$@"
+        exec crew exec \(shellQuote(package)) \(shellQuote(binary)) "$@"
         """
         try content.write(to: shimURL, atomically: true, encoding: .utf8)
         try setExecutable(shimURL)
@@ -104,5 +107,9 @@ public struct ShimManager: Sendable {
             return line.dropFirst("# Coldbrew shim for ".count).split(separator: "/").first.map(String.init)
         }
         return nil
+    }
+
+    private func shellQuote(_ value: String) -> String {
+        "'\(value.replacingOccurrences(of: "'", with: "'\\''"))'"
     }
 }

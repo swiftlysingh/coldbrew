@@ -20,6 +20,7 @@ public struct Paths: Equatable, Sendable {
         for directory in [
             root,
             binDir,
+            optDir,
             cellarDir,
             cacheDir,
             cacheBlobsDir,
@@ -39,6 +40,7 @@ public struct Paths: Equatable, Sendable {
     }
 
     public var binDir: URL { root.appendingPathComponent("bin", isDirectory: true) }
+    public var optDir: URL { root.appendingPathComponent("opt", isDirectory: true) }
     public var cellarDir: URL { root.appendingPathComponent("cellar", isDirectory: true) }
     public var cacheDir: URL { root.appendingPathComponent("cache", isDirectory: true) }
     public var downloadsDir: URL { cacheDir.appendingPathComponent("downloads", isDirectory: true) }
@@ -95,7 +97,27 @@ public struct Paths: Equatable, Sendable {
     }
 
     public func isColdbrewPath(_ path: URL) -> Bool {
-        path.path == root.path || path.path.hasPrefix(root.path + "/")
+        func canonicalComponents(_ url: URL) -> [String] {
+            var existing = url.standardizedFileURL
+            var suffix: [String] = []
+
+            while !FileManager.default.fileExists(atPath: existing.path) {
+                let parent = existing.deletingLastPathComponent()
+                if parent.path == existing.path { break }
+                suffix.insert(existing.lastPathComponent, at: 0)
+                existing = parent
+            }
+
+            var resolved = existing.resolvingSymlinksInPath()
+            for component in suffix {
+                resolved.appendPathComponent(component)
+            }
+            return resolved.standardizedFileURL.pathComponents
+        }
+
+        let rootComponents = canonicalComponents(root)
+        let pathComponents = canonicalComponents(path)
+        return pathComponents.starts(with: rootComponents)
     }
 }
 

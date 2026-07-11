@@ -34,3 +34,16 @@ import Testing
     #expect(!store.entryExists(sha256: "abc123"))
     #expect(!FileManager.default.fileExists(atPath: paths.storeLock(sha256: "abc123").path))
 }
+
+@Test func copyTreePreservesRelativeSymbolicLinks() throws {
+    let temp = temporaryDirectory()
+    let source = temp.appendingPathComponent("source", isDirectory: true)
+    let destination = temp.appendingPathComponent("destination", isDirectory: true)
+    try FileManager.default.createDirectory(at: source.appendingPathComponent("real"), withIntermediateDirectories: true)
+    try Data("hello".utf8).write(to: source.appendingPathComponent("real/tool"))
+    try FileManager.default.createSymbolicLink(atPath: source.appendingPathComponent("tool").path, withDestinationPath: "real/tool")
+
+    try copyTree(from: source, to: destination)
+
+    #expect(try FileManager.default.destinationOfSymbolicLink(atPath: destination.appendingPathComponent("tool").path) == "real/tool")
+}

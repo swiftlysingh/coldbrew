@@ -176,7 +176,9 @@ public struct Database: Sendable {
     }
 
     private func configure(_ connection: SQLiteConnection) throws {
-        try connection.execute("PRAGMA journal_mode = WAL")
+        if try connection.string("PRAGMA journal_mode")?.lowercased() != "wal" {
+            try connection.execute("PRAGMA journal_mode = WAL")
+        }
         try connection.execute("PRAGMA synchronous = NORMAL")
         try connection.execute("PRAGMA foreign_keys = ON")
         try connection.execute("PRAGMA busy_timeout = 5000")
@@ -184,6 +186,11 @@ public struct Database: Sendable {
 
     private func migrate(_ connection: SQLiteConnection) throws {
         var version = try Int32(connection.int64("PRAGMA user_version") ?? 0)
+        guard version <= coldbrewSchemaVersion else {
+            throw ColdbrewError.database(
+                "Database schema version \(version) is newer than supported version \(coldbrewSchemaVersion)"
+            )
+        }
 
         if version < 1 {
             try connection.execute(
@@ -241,10 +248,6 @@ public struct Database: Sendable {
             try connection.execute("CREATE INDEX IF NOT EXISTS store_refs_sha_idx ON store_refs(sha256)")
             try connection.execute("PRAGMA user_version = 3")
             version = 3
-        }
-
-        if version != coldbrewSchemaVersion {
-            try connection.execute("PRAGMA user_version = \(coldbrewSchemaVersion)")
         }
     }
 }

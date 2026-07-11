@@ -44,6 +44,25 @@ import Testing
     #expect(result.path == paths.cacheBlob(sha256: sha))
 }
 
+@Test func bottleDownloaderHandlesConcurrentDownloadsOfSameBottle() async throws {
+    let root = temporaryDirectory()
+    let source = root.appendingPathComponent("hello.tar.gz")
+    let data = Data(repeating: 42, count: 1_000_000)
+    try data.write(to: source)
+    let sha = SHA256.hash(data)
+    let paths = Paths(root: root.appendingPathComponent("coldbrew", isDirectory: true))
+    try paths.createDirectories()
+    let downloader = BottleDownloader(cache: Cache(paths: paths))
+    let request = BottleDownloadRequest(url: source, sha256: sha, name: "hello")
+
+    async let first = downloader.downloadToCache(request)
+    async let second = downloader.downloadToCache(request)
+    let results = try await [first, second]
+
+    #expect(results.allSatisfy { $0.path == paths.cacheBlob(sha256: sha) })
+    #expect(try SHA256.verify(file: results[0].path, expected: sha))
+}
+
 @Test func bottleDownloaderRemovesTempFileOnChecksumMismatch() async throws {
     let root = temporaryDirectory()
     let source = root.appendingPathComponent("hello.tar.gz")

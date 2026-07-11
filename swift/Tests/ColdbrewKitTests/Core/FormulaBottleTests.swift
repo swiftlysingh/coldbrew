@@ -46,3 +46,8 @@ import Testing
     #expect(best?.tag == "arm64_sonoma")
     #expect(best?.file.ghcrURL(name: "jq") == "https://ghcr.io/v2/homebrew/core/jq/blobs/sha256:abc123")
 }
+
+@Test func everyPlatformFallsBackToUniversalBottles() {
+    #expect(Platform(os: .macOS, architecture: .arm64).bottleTags.last == "all")
+    #expect(Platform(os: .linux, architecture: .x86_64).bottleTags.last == "all")
+}

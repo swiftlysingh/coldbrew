@@ -14,11 +14,21 @@ import Testing
     #expect(manager.hasShim(binary: "hello"))
     let content = try String(contentsOf: paths.shim("hello"))
     #expect(content.contains("# Coldbrew shim for hello/hello"))
-    #expect(content.contains("exec crew exec hello hello"))
+    #expect(content.contains("exec crew exec 'hello' 'hello'"))
     #expect(try manager.listShims().map(\.package) == ["hello"])
 
     try manager.removeShims(binaries: ["hello"])
     #expect(!manager.hasShim(binary: "hello"))
+}
+
+@Test func shimManagerShellQuotesPackageAndBinaryNames() throws {
+    let paths = Paths(root: temporaryDirectory())
+    try paths.createDirectories()
+
+    try ShimManager(paths: paths).createShims(name: "hello package", version: "1.0.0", binaries: ["say'hi"])
+
+    let content = try String(contentsOf: paths.shim("say'hi"))
+    #expect(content.contains("exec crew exec 'hello package' 'say'\\''hi' \"$@\""))
 }
 
 @Test func shimManagerResolvesBinaryFromProjectThenDefaults() throws {
@@ -38,4 +48,19 @@ import Testing
     )
 
     #expect(resolved == binDir.appendingPathComponent("hello"))
+}
+
+@Test func shimManagerFallsBackToLatestInstalledVersion() throws {
+    let paths = Paths(root: temporaryDirectory())
+    let binary = paths.cellarPackage("hello", version: "2.0.0").appendingPathComponent("bin/hello")
+    try FileManager.default.createDirectory(at: binary.deletingLastPathComponent(), withIntermediateDirectories: true)
+    FileManager.default.createFile(atPath: binary.path, contents: Data())
+
+    let resolved = try ShimManager(paths: paths).resolveBinary(
+        package: "hello",
+        binary: "hello",
+        defaults: [:]
+    )
+
+    #expect(resolved == binary)
 }
