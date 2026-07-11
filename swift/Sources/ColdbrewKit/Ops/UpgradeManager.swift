@@ -23,16 +23,19 @@ public struct UpgradeManager: Sendable {
     }
 
     public func plan(available: [InstallRequest], filter: [String] = []) throws -> UpgradePlan {
-        let availableByName = Dictionary(uniqueKeysWithValues: available.map { ($0.name, $0) })
-        let config = try SimpleGlobalConfig.load(paths: paths)
-        let installed = try Cellar(paths: paths).listPackages()
+        let availableByName = Dictionary(grouping: available, by: \.name)
+        let config = try GlobalConfig.load(from: paths.configFile)
+        let installedByName = Dictionary(grouping: try Cellar(paths: paths).listPackages(), by: \.name)
         let filterSet = Set(filter)
-        let upgrades = installed.compactMap { package -> UpgradeInfo? in
-            guard filterSet.isEmpty || filterSet.contains(package.name) else { return nil }
-            guard config.pins[package.name] == nil else { return nil }
-            guard let candidate = availableByName[package.name], candidate.version != package.version else { return nil }
+        let upgrades = installedByName.compactMap { name, packages -> UpgradeInfo? in
+            guard filterSet.isEmpty || filterSet.contains(name) else { return nil }
+            guard !config.isPinned(name) else { return nil }
+            guard let package = packages.max(by: { versionLessThan($0.version, $1.version) }),
+                  let candidate = availableByName[name]?.max(by: { versionLessThan($0.version, $1.version) }),
+                  versionLessThan(package.version, candidate.version)
+            else { return nil }
             return UpgradeInfo(
-                name: package.name,
+                name: name,
                 currentVersion: package.version,
                 newVersion: candidate.version,
                 isMajor: major(package.version) != major(candidate.version)
@@ -46,16 +49,20 @@ public struct UpgradeManager: Sendable {
             return UpgradeResult(upgraded: [])
         }
 
-        let requests = Dictionary(uniqueKeysWithValues: available.map { ($0.name, $0) })
         var upgraded: [UpgradeInfo] = []
         for upgrade in plan.upgrades {
-            guard let request = requests[upgrade.name] else { continue }
+            guard let request = available.first(where: { $0.name == upgrade.name && $0.version == upgrade.newVersion }) else { continue }
             _ = try await InstallManager(paths: paths).install([request], options: InstallOptions(force: true))
             try PackageOperations(paths: paths).setDefault("\(upgrade.name)@\(upgrade.newVersion)")
             upgraded.append(upgrade)
         }
         return UpgradeResult(upgraded: upgraded)
     }
+}
+
+private func versionLessThan(_ lhs: String, _ rhs: String) -> Bool {
+    guard let left = try? Version(lhs), let right = try? Version(rhs) else { return lhs < rhs }
+    return left < right
 }
 
 private func major(_ version: String) -> Int? {

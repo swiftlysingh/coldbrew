@@ -88,6 +88,28 @@ import Testing
     #expect(output.text.contains("#compdef crew"))
 }
 
+@Test func globalQuietAndVerboseFlagsAffectSubcommands() throws {
+    let home = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: home) }
+    let environment = ["COLDBREW_HOME": home.path]
+
+    let quiet = try runCrew(["--quiet", "list"], environment: environment)
+    #expect(quiet.status == 0)
+    #expect(quiet.text.isEmpty)
+
+    let verbose = try runCrew(["list", "--verbose"], environment: environment)
+    #expect(verbose.status == 0)
+    #expect(verbose.text.contains("DEBUG: Running list"))
+}
+
+@Test func installLockDoesNotRequirePackageArguments() throws {
+    let output = try runCrew("install", "--lock")
+
+    #expect(output.status != 0)
+    #expect(output.text.contains("Lockfile not found"))
+    #expect(!output.text.contains("Missing expected argument"))
+}
+
 private struct CrewOutput {
     let status: Int32
     let text: String
@@ -97,7 +119,7 @@ private func runCrew(_ args: String...) throws -> CrewOutput {
     try runCrew(args)
 }
 
-private func runCrew(_ args: [String]) throws -> CrewOutput {
+private func runCrew(_ args: [String], environment: [String: String] = [:]) throws -> CrewOutput {
     guard let crew = crewBinary() else {
         Issue.record("Missing built crew executable; run `swift build` before `swift test`.")
         return CrewOutput(status: 127, text: "")
@@ -106,6 +128,7 @@ private func runCrew(_ args: [String]) throws -> CrewOutput {
     let process = Process()
     process.executableURL = crew
     process.arguments = args
+    process.environment = ProcessInfo.processInfo.environment.merging(environment) { _, override in override }
 
     let stdout = Pipe()
     let stderr = Pipe()

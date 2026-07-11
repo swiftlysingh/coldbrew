@@ -89,6 +89,7 @@ public struct UninstallCleanupManager: Sendable {
             let package = try? cellar.package(name: name, version: version)
             let binaries = try cellar.binaries(name: name, version: version)
             try cellar.uninstall(name: name, version: version)
+            try cellar.refreshOptLink(name: name)
             if let sha = package?.bottleSha256 {
                 let db = Database(paths: paths)
                 try db.removeStoreRef(db.connect(), sha256: sha, package: name, version: version)
@@ -98,16 +99,16 @@ public struct UninstallCleanupManager: Sendable {
             let remaining = try cellar.versions(name: name)
             if remaining.isEmpty {
                 try ShimManager(paths: paths).removeShims(binaries: binaries)
-                var config = try SimpleGlobalConfig.load(paths: paths)
-                config.defaults.removeValue(forKey: name)
-                config.pins.removeValue(forKey: name)
-                try config.save(paths: paths)
+                var config = try GlobalConfig.load(from: paths.configFile)
+                config.removeDefault(name)
+                config.removePin(name)
+                try config.save(to: paths.configFile)
             }
         }
 
         if options.withDeps {
-            for dep in try orphanDependencies() {
-                _ = try uninstall("\(dep.name)@\(dep.version)")
+            while let dep = try orphanDependencies().first {
+                removed += try uninstall("\(dep.name)@\(dep.version)").removed
             }
         }
         return UninstallResult(removed: removed)

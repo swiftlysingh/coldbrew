@@ -45,6 +45,33 @@ import Testing
     #expect(try PackageOperations(paths: paths).defaultVersions("hello").defaultVersion == "1.1.0")
 }
 
+@Test func upgradeManagerUsesNewestInstalledAndAvailableVersionsWithoutDuplicateTraps() async throws {
+    let root = temporaryDirectory()
+    let paths = Paths(root: root.appendingPathComponent("coldbrew", isDirectory: true))
+    let two = try makeUpgradeBottle(root: root, name: "hello", version: "2.0.0")
+    let ten = try makeUpgradeBottle(root: root, name: "hello", version: "10.0.0")
+    let eleven = try makeUpgradeBottle(root: root, name: "hello", version: "11.0.0")
+    _ = try await InstallManager(paths: paths).install([
+        InstallRequest(name: "hello", version: "2.0.0", bottleURL: two.url, sha256: two.sha, tag: "fixture"),
+        InstallRequest(name: "hello", version: "10.0.0", bottleURL: ten.url, sha256: ten.sha, tag: "fixture"),
+    ])
+    let manager = UpgradeManager(paths: paths)
+    let available = [
+        InstallRequest(name: "hello", version: "9.0.0", bottleURL: two.url, sha256: two.sha, tag: "fixture"),
+        InstallRequest(name: "hello", version: "11.0.0", bottleURL: eleven.url, sha256: eleven.sha, tag: "fixture"),
+    ]
+
+    let plan = try manager.plan(available: available)
+    #expect(plan.upgrades == [UpgradeInfo(name: "hello", currentVersion: "10.0.0", newVersion: "11.0.0", isMajor: true)])
+    _ = try await manager.apply(plan, available: Array(available.reversed()), yes: true)
+    #expect(FileManager.default.fileExists(atPath: paths.cellarPackage("hello", version: "11.0.0").path))
+    #expect(!FileManager.default.fileExists(atPath: paths.cellarPackage("hello", version: "9.0.0").path))
+
+    #expect(try manager.plan(available: [
+        InstallRequest(name: "hello", version: "9.0.0", bottleURL: two.url, sha256: two.sha, tag: "fixture"),
+    ]).upgrades.isEmpty)
+}
+
 private func makeUpgradeBottle(root: URL, name: String, version: String) throws -> (url: URL, sha: String) {
     let prefix = root.appendingPathComponent("payload-\(name)-\(version)/\(name)/\(version)", isDirectory: true)
     let bin = prefix.appendingPathComponent("bin", isDirectory: true)

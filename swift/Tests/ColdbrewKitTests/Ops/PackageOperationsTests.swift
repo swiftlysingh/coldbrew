@@ -53,18 +53,21 @@ import Testing
     try installFixturePackage(paths: paths, name: "hello", version: "1.0.0", binaries: [])
     try installFixturePackage(paths: paths, name: "hello", version: "2.0.0", binaries: [])
     let ops = PackageOperations(paths: paths)
+    let settings = Settings(autoUpdate: false, parallelDownloads: 3, keepVersions: 7, analytics: true)
+    try GlobalConfig(settings: settings).save(to: paths.configFile)
 
     try ops.pin("hello")
     try ops.setDefault("hello@1.0.0")
 
     let config = try String(contentsOf: paths.configFile)
     #expect(config.contains("[defaults]"))
-    #expect(config.contains("\"hello\" = \"1.0.0\""))
+    #expect(config.contains("hello = \"1.0.0\""))
     #expect(config.contains("[pins]"))
-    #expect(config.contains("\"hello\" = \"2.0.0\""))
+    #expect(config.contains("hello = \"2.0.0\""))
     #expect(try ops.defaultVersions("hello").defaultVersion == "1.0.0")
     #expect(try ops.unpin("hello"))
     #expect(try !ops.unpin("hello"))
+    #expect(try GlobalConfig.load(from: paths.configFile).settings == settings)
 }
 
 @Test func parsePackageSpecMatchesRustFirstAtSplit() {
