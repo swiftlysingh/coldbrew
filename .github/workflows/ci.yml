@@ -2,6 +2,9 @@ name: CI
 
 on:
   push:
+    branches: [main, swift-main]
+  pull_request:
+    branches: [main, swift-main]
 
 jobs:
   test:
@@ -13,10 +16,8 @@ jobs:
         include:
           - name: ubuntu
             github: ubuntu-latest
-            self_hosted: [self-hosted, Linux, X64]
           - name: macos
             github: macos-latest
-            self_hosted: [self-hosted, macOS, ARM64]
 
     steps:
       - name: Checkout
@@ -26,9 +27,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-
-      - name: Ensure Rust components
-        run: rustup component add rustfmt clippy
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
