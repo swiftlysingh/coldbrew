@@ -2,10 +2,12 @@
 //!
 //! These tests lock command and flag presence without exercising command behavior.
 
+#[path = "support/process.rs"]
+mod process;
+
 use std::env;
 use std::ffi::OsStr;
 use std::path::PathBuf;
-use std::process::Command;
 
 struct CrewOutput {
     status: std::process::ExitStatus,
@@ -24,7 +26,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let output = Command::new(crew_bin())
+    let output = process::command(crew_bin())
         .args(args)
         .env("NO_COLOR", "1")
         .env("CLICOLOR", "0")
@@ -66,6 +68,15 @@ fn assert_contains(output: &str, needle: &str) {
     );
 }
 
+fn assert_contains_any(output: &str, needles: &[&str]) {
+    assert!(
+        needles.iter().any(|needle| output.contains(needle)),
+        "expected output to contain one of {:?}\noutput:\n{}",
+        needles,
+        output
+    );
+}
+
 fn assert_command_listed(help: &str, command: &str) {
     assert!(
         help.lines()
@@ -96,13 +107,13 @@ fn assert_command_hidden(help: &str, command: &str) {
     );
 }
 
-fn assert_help(args: &[&str], expected: &[&str]) {
+fn assert_help(args: &[&str], expected: &[&[&str]]) {
     let output = run(args.iter().copied());
 
     assert_success(&output);
-    assert_contains(&output.stdout, "Usage:");
-    for token in expected {
-        assert_contains(&output.stdout, token);
+    assert_contains_any(&output.stdout, &["Usage:", "USAGE:"]);
+    for alternatives in expected {
+        assert_contains_any(&output.stdout, alternatives);
     }
 }
 
@@ -111,7 +122,7 @@ fn root_help_lists_public_commands_and_global_flags() {
     let output = run(["--help"]);
 
     assert_success(&output);
-    assert_contains(&output.stdout, "Usage:");
+    assert_contains_any(&output.stdout, &["Usage:", "USAGE:"]);
     assert_contains(&output.stdout, "--quiet");
     assert_contains(&output.stdout, "--verbose");
 
@@ -145,29 +156,52 @@ fn root_help_lists_public_commands_and_global_flags() {
 
 #[test]
 fn command_help_exposes_current_flags_and_arguments() {
-    let cases: &[(&[&str], &[&str])] = &[
+    let cases: &[(&[&str], &[&[&str]])] = &[
+        (
+            &["search", "--help"],
+            &[&["<QUERY>", "<query>"], &["--extended"]],
+        ),
+        (
+            &["info", "--help"],
+            &[&["<PACKAGE>", "<package>"], &["--format"]],
+        ),
         (
             &["install", "--help"],
-            &["[PACKAGES]...", "--lock", "--skip-deps", "--force"],
+            &[
+                &["[PACKAGES]...", "<packages> ..."],
+                &["--lock"],
+                &["--skip-deps"],
+                &["--force"],
+            ],
         ),
-        (&["uninstall", "--help"], &["<PACKAGES>...", "--all", "--with-deps"]),
-        (&["upgrade", "--help"], &["[PACKAGES]...", "--yes"]),
-        (&["list", "--help"], &["--names-only", "--versions"]),
-        (&["which", "--help"], &["<BINARY>"]),
-        (&["pin", "--help"], &["<PACKAGE>"]),
-        (&["unpin", "--help"], &["<PACKAGE>"]),
-        (&["default", "--help"], &["<PACKAGE>"]),
-        (&["dependents", "--help"], &["<PACKAGE>"]),
-        (&["init", "--help"], &["--force"]),
-        (&["lock", "--help"], &["Usage:"]),
-        (&["tap", "--help"], &["[TAP]", "--remove"]),
-        (&["space", "--help"], &["show", "clean"]),
-        (&["space", "show", "--help"], &["--details"]),
-        (&["space", "clean", "--help"], &["--all", "--dry-run"]),
-        (&["link", "--help"], &["<PACKAGE>", "--force"]),
-        (&["unlink", "--help"], &["<PACKAGE>"]),
-        (&["doctor", "--help"], &["Usage:"]),
-        (&["completions", "--help"], &["<SHELL>"]),
+        (
+            &["uninstall", "--help"],
+            &[
+                &["<PACKAGES>...", "<packages> ..."],
+                &["--all"],
+                &["--with-deps"],
+            ],
+        ),
+        (
+            &["upgrade", "--help"],
+            &[&["[PACKAGES]...", "<packages> ..."], &["--yes"]],
+        ),
+        (&["list", "--help"], &[&["--names-only"], &["--versions"]]),
+        (&["which", "--help"], &[&["<BINARY>", "<binary>"]]),
+        (&["pin", "--help"], &[&["<PACKAGE>", "<package>"]]),
+        (&["unpin", "--help"], &[&["<PACKAGE>", "<package>"]]),
+        (&["default", "--help"], &[&["<PACKAGE>", "<package>"]]),
+        (&["dependents", "--help"], &[&["<PACKAGE>", "<package>"]]),
+        (&["init", "--help"], &[&["--force"]]),
+        (&["lock", "--help"], &[&["Usage:", "USAGE:"]]),
+        (&["tap", "--help"], &[&["[TAP]", "[<tap>]"], &["--remove"]]),
+        (&["space", "--help"], &[&["show"], &["clean"]]),
+        (&["space", "show", "--help"], &[&["--details"]]),
+        (&["space", "clean", "--help"], &[&["--all"], &["--dry-run"]]),
+        (&["link", "--help"], &[&["<PACKAGE>", "<package>"], &["--force"]]),
+        (&["unlink", "--help"], &[&["<PACKAGE>", "<package>"]]),
+        (&["doctor", "--help"], &[&["Usage:", "USAGE:"]]),
+        (&["completions", "--help"], &[&["<SHELL>", "<shell>"]]),
     ];
 
     for (args, expected) in cases {
@@ -179,6 +213,10 @@ fn command_help_exposes_current_flags_and_arguments() {
 fn hidden_exec_command_is_still_callable_for_shims() {
     assert_help(
         &["exec", "--help"],
-        &["<PACKAGE>", "<BINARY>", "[ARGS]..."],
+        &[
+            &["<PACKAGE>", "<package>"],
+            &["<BINARY>", "<binary>"],
+            &["[ARGS]...", "[<args> ...]"],
+        ],
     );
 }

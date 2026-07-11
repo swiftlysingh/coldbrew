@@ -2,7 +2,7 @@
 
 use crate::core::Formula;
 use crate::error::{ColdbrewError, Result};
-use crate::registry::homebrew_api::{CacheHeaders, IndexFetchResult, FORMULA_INDEX_URL};
+use crate::registry::homebrew_api::{formula_index_url, CacheHeaders, IndexFetchResult};
 use crate::registry::HomebrewApi;
 use crate::storage::{Database, Paths};
 use std::collections::HashMap;
@@ -30,8 +30,9 @@ impl Index {
         let conn = db.connect()?;
 
         let index_path = self.paths.formula_index();
+        let api_cache_key = formula_index_url();
         let cache_entry = if index_path.exists() {
-            db.get_api_cache(&conn, FORMULA_INDEX_URL)?
+            db.get_api_cache(&conn, &api_cache_key)?
         } else {
             None
         };
@@ -67,7 +68,7 @@ impl Index {
 
         db.upsert_api_cache(
             &conn,
-            FORMULA_INDEX_URL,
+            &api_cache_key,
             cache_update.etag.as_deref(),
             cache_update.last_modified.as_deref(),
         )?;

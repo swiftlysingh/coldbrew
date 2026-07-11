@@ -1,16 +1,18 @@
 //! Shim and hidden `crew exec` scenarios for the executable-spec harness.
 //!
-//! These are ignored until fixture install support can create real cellar state.
+mod support;
 
 use std::env;
 use std::ffi::OsStr;
 use std::path::PathBuf;
-use std::process::{Command, ExitStatus};
+use std::process::ExitStatus;
 
+use support::FixtureRegistry;
 use tempfile::TempDir;
 
 struct Harness {
     bin: PathBuf,
+    fixture: FixtureRegistry,
     temp: TempDir,
     home: PathBuf,
     coldbrew_home: PathBuf,
@@ -33,13 +35,16 @@ impl Harness {
         std::fs::create_dir_all(&coldbrew_home).expect("create coldbrew home");
         std::fs::create_dir_all(&project).expect("create project dir");
 
-        Self {
+        let harness = Self {
             bin: crew_bin(),
+            fixture: FixtureRegistry::start(),
             temp,
             home,
             coldbrew_home,
             project,
-        }
+        };
+        assert_success(&harness.run(["update"]));
+        harness
     }
 
     fn run<I, S>(&self, args: I) -> Output
@@ -47,10 +52,11 @@ impl Harness {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
-        let output = Command::new(&self.bin)
+        let output = support::process::command(&self.bin)
             .args(args)
             .current_dir(&self.project)
             .env("COLDBREW_HOME", &self.coldbrew_home)
+            .env("COLDBREW_FORMULA_API_BASE", self.fixture.base_url())
             .env("HOME", &self.home)
             .env("NO_COLOR", "1")
             .env("CLICOLOR", "0")
@@ -67,6 +73,10 @@ impl Harness {
 
     fn shim(&self, binary: &str) -> PathBuf {
         self.coldbrew_home.join("bin").join(binary)
+    }
+
+    fn cellar_package(&self, name: &str, version: &str) -> PathBuf {
+        self.coldbrew_home.join("cellar").join(name).join(version)
     }
 }
 
@@ -96,7 +106,7 @@ fn assert_contains(output: &Output, needle: &str) {
 }
 
 #[test]
-#[ignore = "requires PR011 fixture registry server wiring"]
+#[ignore = "requires macOS fixture bottles"]
 fn generated_shim_calls_hidden_exec() {
     let harness = Harness::new();
 
@@ -108,7 +118,7 @@ fn generated_shim_calls_hidden_exec() {
 }
 
 #[test]
-#[ignore = "requires PR011 fixture registry server wiring"]
+#[ignore = "requires macOS fixture bottles"]
 fn hidden_exec_forwards_arguments_to_real_binary() {
     let harness = Harness::new();
 
@@ -117,7 +127,7 @@ fn hidden_exec_forwards_arguments_to_real_binary() {
 }
 
 #[test]
-#[ignore = "requires PR011 fixture registry server wiring"]
+#[ignore = "requires macOS fixture bottles"]
 fn version_file_takes_precedence_over_global_default_and_latest() {
     let harness = Harness::new();
 
@@ -130,7 +140,7 @@ fn version_file_takes_precedence_over_global_default_and_latest() {
 }
 
 #[test]
-#[ignore = "requires PR011 fixture registry server wiring"]
+#[ignore = "requires macOS fixture bottles"]
 fn exec_sets_dependency_library_paths() {
     let harness = Harness::new();
 
@@ -138,5 +148,11 @@ fn exec_sets_dependency_library_paths() {
 
     let output = harness.run(["exec", "uses-dep", "uses-dep"]);
     assert_success(&output);
-    assert!(harness.temp.path().exists());
+    assert_contains(
+        &output,
+        &harness
+            .cellar_package("dep", "1.0.0")
+            .join("lib")
+            .to_string_lossy(),
+    );
 }

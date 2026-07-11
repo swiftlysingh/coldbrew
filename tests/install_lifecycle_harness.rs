@@ -1,16 +1,18 @@
 //! Install lifecycle scenarios for the executable-spec harness.
 //!
-//! These are intentionally ignored until PR011 fixture serving is wired into the harness.
+mod support;
 
 use std::env;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus};
+use std::process::ExitStatus;
 
+use support::FixtureRegistry;
 use tempfile::TempDir;
 
 struct Harness {
     bin: PathBuf,
+    fixture: FixtureRegistry,
     temp: TempDir,
     home: PathBuf,
     coldbrew_home: PathBuf,
@@ -33,13 +35,16 @@ impl Harness {
         std::fs::create_dir_all(&coldbrew_home).expect("create coldbrew home");
         std::fs::create_dir_all(&project).expect("create project dir");
 
-        Self {
+        let harness = Self {
             bin: crew_bin(),
+            fixture: FixtureRegistry::start(),
             temp,
             home,
             coldbrew_home,
             project,
-        }
+        };
+        assert_success(&harness.run(["update"]));
+        harness
     }
 
     fn run<I, S>(&self, args: I) -> Output
@@ -47,10 +52,11 @@ impl Harness {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
-        let output = Command::new(&self.bin)
+        let output = support::process::command(&self.bin)
             .args(args)
             .current_dir(&self.project)
             .env("COLDBREW_HOME", &self.coldbrew_home)
+            .env("COLDBREW_FORMULA_API_BASE", self.fixture.base_url())
             .env("HOME", &self.home)
             .env("NO_COLOR", "1")
             .env("CLICOLOR", "0")
@@ -104,7 +110,7 @@ fn assert_path_exists(path: &Path) {
 }
 
 #[test]
-#[ignore = "requires PR011 fixture registry server wiring"]
+#[ignore = "requires macOS fixture bottles"]
 fn install_single_package_creates_cellar_store_and_shim() {
     let harness = Harness::new();
 
@@ -117,7 +123,7 @@ fn install_single_package_creates_cellar_store_and_shim() {
 }
 
 #[test]
-#[ignore = "requires PR011 fixture registry server wiring"]
+#[ignore = "requires macOS fixture bottles"]
 fn install_with_dependency_installs_dependency_first() {
     let harness = Harness::new();
 
@@ -128,16 +134,22 @@ fn install_with_dependency_installs_dependency_first() {
 }
 
 #[test]
-#[ignore = "requires PR011 fixture registry server wiring"]
+#[ignore = "requires macOS fixture bottles"]
 fn install_force_reinstalls_existing_package() {
     let harness = Harness::new();
 
     assert_success(&harness.run(["install", "hello"]));
+    let marker = harness.cellar_package("hello", "1.0.0").join("stale-marker");
+    std::fs::write(&marker, "must be replaced").expect("write replacement marker");
     assert_success(&harness.run(["install", "--force", "hello"]));
+    assert!(
+        !marker.exists(),
+        "force install must replace the existing cellar"
+    );
 }
 
 #[test]
-#[ignore = "requires PR011 fixture registry server wiring"]
+#[ignore = "requires macOS fixture bottles"]
 fn install_skip_deps_omits_runtime_dependencies() {
     let harness = Harness::new();
 
@@ -148,17 +160,22 @@ fn install_skip_deps_omits_runtime_dependencies() {
 }
 
 #[test]
-#[ignore = "requires PR011 fixture registry server wiring"]
+#[ignore = "requires macOS fixture bottles"]
 fn list_and_which_report_installed_package() {
     let harness = Harness::new();
 
     assert_success(&harness.run(["install", "hello"]));
-    assert_contains(&harness.run(["list"]), "hello");
-    assert_contains(&harness.run(["which", "hello"]), "hello");
+    let list = harness.run(["list"]);
+    assert_success(&list);
+    assert_contains(&list, "hello");
+
+    let which = harness.run(["which", "hello"]);
+    assert_success(&which);
+    assert_contains(&which, &harness.shim("hello").to_string_lossy());
 }
 
 #[test]
-#[ignore = "requires PR011 fixture registry server wiring"]
+#[ignore = "requires macOS fixture bottles"]
 fn uninstall_removes_package_and_with_deps_removes_unused_dependencies() {
     let harness = Harness::new();
 

@@ -4,17 +4,21 @@
 //! wiring, so they are ignored until the install implementation PRs can satisfy
 //! them end to end.
 
+mod support;
+
 use std::env;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitStatus};
+use std::process::ExitStatus;
 
 use rusqlite::Connection;
+use support::FixtureRegistry;
 use tempfile::TempDir;
 
 struct CrossBinaryHarness {
     rust_bin: PathBuf,
     swift_bin: PathBuf,
+    fixture: FixtureRegistry,
     temp: TempDir,
     home: PathBuf,
     coldbrew_home: PathBuf,
@@ -46,6 +50,7 @@ impl CrossBinaryHarness {
         Self {
             rust_bin: rust_crew_bin(),
             swift_bin: swift_crew_bin(),
+            fixture: FixtureRegistry::start(),
             temp,
             home,
             coldbrew_home,
@@ -74,10 +79,11 @@ impl CrossBinaryHarness {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
-        let output = Command::new(bin)
+        let output = support::process::command(bin)
             .args(args)
             .current_dir(&self.project)
             .env("COLDBREW_HOME", &self.coldbrew_home)
+            .env("COLDBREW_FORMULA_API_BASE", self.fixture.base_url())
             .env("HOME", &self.home)
             .env("NO_COLOR", "1")
             .env("CLICOLOR", "0")
@@ -128,38 +134,71 @@ fn assert_contains(output: &Output, needle: &str) {
     );
 }
 
-fn assert_schema_fingerprint(db_file: &Path) {
+#[derive(Debug, PartialEq, Eq)]
+struct SchemaFingerprint {
+    user_version: i32,
+    objects: Vec<(String, String, String)>,
+}
+
+fn schema_fingerprint(db_file: &Path) -> SchemaFingerprint {
     assert!(db_file.exists(), "expected database at {}", db_file.display());
     let conn = Connection::open(db_file).expect("open coldbrew database");
     let user_version: i32 = conn
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .expect("read user_version");
-    assert_eq!(user_version, 3);
-
     let mut stmt = conn
         .prepare(
-            "SELECT name, sql
+            "SELECT type, name, sql
              FROM sqlite_master
              WHERE type IN ('table', 'index') AND name NOT LIKE 'sqlite_%'
-             ORDER BY name",
+             ORDER BY type, name",
         )
         .expect("prepare schema fingerprint query");
     let rows = stmt
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)))
-        .expect("query schema fingerprint");
-    let fingerprint = rows
-        .map(|row| {
-            let (name, sql) = row.expect("read schema row");
-            format!("{}:{}", name, sql.unwrap_or_default())
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
         })
-        .collect::<Vec<_>>()
-        .join("\n");
+        .expect("query schema fingerprint");
+    let objects = rows
+        .map(|row| {
+            let (kind, name, sql) = row.expect("read schema row");
+            let sql = sql
+                .unwrap_or_default()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            (kind, name, sql)
+        })
+        .collect();
 
-    assert!(fingerprint.contains("api_cache:CREATE TABLE api_cache"));
-    assert!(fingerprint.contains("blob_cache:CREATE TABLE blob_cache"));
-    assert!(fingerprint.contains("store_entries:CREATE TABLE store_entries"));
-    assert!(fingerprint.contains("store_refs:CREATE TABLE store_refs"));
-    assert!(fingerprint.contains("store_refs_sha_idx:CREATE INDEX store_refs_sha_idx"));
+    SchemaFingerprint {
+        user_version,
+        objects,
+    }
+}
+
+fn assert_schema_fingerprint(db_file: &Path) {
+    let fingerprint = schema_fingerprint(db_file);
+    assert_eq!(fingerprint.user_version, 3);
+
+    assert_eq!(
+        fingerprint
+            .objects
+            .iter()
+            .map(|(kind, name, _)| (kind.as_str(), name.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            ("index", "store_refs_sha_idx"),
+            ("table", "api_cache"),
+            ("table", "blob_cache"),
+            ("table", "store_entries"),
+            ("table", "store_refs"),
+        ]
+    );
 }
 
 fn assert_store_ref(db_file: &Path, package: &str, version: &str) {
@@ -179,6 +218,7 @@ fn assert_store_ref(db_file: &Path, package: &str, version: &str) {
 fn rust_install_swift_list_and_uninstall() {
     let harness = CrossBinaryHarness::new();
 
+    assert_success(&harness.run_rust(["update"]));
     assert_success(&harness.run_rust(["install", "hello"]));
     assert_schema_fingerprint(&harness.db_file());
     assert_store_ref(&harness.db_file(), "hello", "1.0.0");
@@ -195,6 +235,7 @@ fn rust_install_swift_list_and_uninstall() {
 fn swift_install_rust_list_and_uninstall() {
     let harness = CrossBinaryHarness::new();
 
+    assert_success(&harness.run_swift(["update"]));
     assert_success(&harness.run_swift(["install", "uses-dep"]));
     assert_schema_fingerprint(&harness.db_file());
     assert_store_ref(&harness.db_file(), "dep", "1.0.0");
@@ -205,4 +246,18 @@ fn swift_install_rust_list_and_uninstall() {
     assert_contains(&harness.run_swift(["list"]), "No packages installed");
 
     assert!(harness.temp.path().exists());
+}
+
+#[test]
+#[ignore = "requires Rust and Swift binaries"]
+fn rust_and_swift_create_identical_database_schemas() {
+    let rust = CrossBinaryHarness::new();
+    let swift = CrossBinaryHarness::new();
+
+    assert_success(&rust.run_rust(["update"]));
+    assert_success(&swift.run_swift(["update"]));
+    assert_eq!(
+        schema_fingerprint(&rust.db_file()),
+        schema_fingerprint(&swift.db_file())
+    );
 }

@@ -2,10 +2,13 @@
 //!
 //! Run with: cargo test --test integration
 
+#[path = "support/process.rs"]
+mod process;
+
 use std::env;
 use std::ffi::OsStr;
 use std::path::PathBuf;
-use std::process::{Command, ExitStatus};
+use std::process::ExitStatus;
 
 use tempfile::TempDir;
 
@@ -55,7 +58,7 @@ impl CrewHarness {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
-        let output = Command::new(&self.bin)
+        let output = process::command(&self.bin)
             .args(args)
             .current_dir(&self.project)
             .env("COLDBREW_HOME", &self.coldbrew_home)

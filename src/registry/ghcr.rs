@@ -144,6 +144,12 @@ impl GhcrClient {
     where
         F: Fn(u64, u64),
     {
+        if !Self::is_ghcr_url(&bottle_file.url) {
+            self.download_plain_url(&bottle_file.url, dest, progress_callback)
+                .await?;
+            return Ok(());
+        }
+
         let mut refreshed = false;
         let repository = Self::repository_from_url(&bottle_file.url)?;
         let candidates = self.build_candidate_urls(formula, bottle_file);
@@ -208,6 +214,17 @@ impl GhcrClient {
         formula: &Formula,
         bottle_file: &BottleFile,
     ) -> Result<Vec<u8>> {
+        if !Self::is_ghcr_url(&bottle_file.url) {
+            let response = self.client.get(&bottle_file.url).send().await?;
+            if !response.status().is_success() {
+                return Err(ColdbrewError::DownloadFailed(format!(
+                    "Bottle download failed: {}",
+                    response.status()
+                )));
+            }
+            return Ok(response.bytes().await?.to_vec());
+        }
+
         let repository = Self::repository_from_url(&bottle_file.url)?;
         let token = self.get_token(&repository).await?;
 
@@ -248,6 +265,40 @@ impl GhcrClient {
             }
         }
         candidates
+    }
+
+    fn is_ghcr_url(url: &str) -> bool {
+        reqwest::Url::parse(url)
+            .ok()
+            .and_then(|url| url.host_str().map(|host| host == "ghcr.io"))
+            .unwrap_or(false)
+    }
+
+    async fn download_plain_url<F>(&self, url: &str, dest: &Path, progress_callback: F) -> Result<()>
+    where
+        F: Fn(u64, u64),
+    {
+        let response = self.client.get(url).send().await?;
+        if !response.status().is_success() {
+            return Err(ColdbrewError::DownloadFailed(format!(
+                "Bottle download failed: {}",
+                response.status()
+            )));
+        }
+
+        let total_size = response.content_length().unwrap_or(0);
+        let mut downloaded = 0;
+        let mut file = std::fs::File::create(dest)?;
+        let mut stream = response.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            file.write_all(&chunk)?;
+            downloaded += chunk.len() as u64;
+            progress_callback(downloaded, total_size);
+        }
+        file.flush()?;
+
+        Ok(())
     }
 
     async fn pick_fastest_url(&self, token: &str, candidates: &[String]) -> Result<String> {

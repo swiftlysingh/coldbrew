@@ -10,10 +10,10 @@
     "stable": {
       "root_url": "http://127.0.0.1:0/bottles",
       "files": {
-        "arm64_sonoma": {
+        "all": {
           "cellar": ":any_skip_relocation",
           "url": "http://127.0.0.1:0/bottles/dep-1.0.0.arm64_sonoma.bottle.tar.gz",
-          "sha256": "752ef5756d06cee7ab2f9ff5292acb3b057dd872a4edca247d8e4b48f90eddba"
+          "sha256": "88c4ce38074c981b1addcd84f21193430776ddf2d7f58bdf6464bcff1c8340b2"
         }
       }
     }

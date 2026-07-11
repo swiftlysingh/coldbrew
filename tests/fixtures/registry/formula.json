@@ -11,10 +11,10 @@
       "stable": {
         "root_url": "http://127.0.0.1:0/bottles",
         "files": {
-          "arm64_sonoma": {
+          "all": {
             "cellar": ":any_skip_relocation",
             "url": "http://127.0.0.1:0/bottles/hello-1.0.0.arm64_sonoma.bottle.tar.gz",
-            "sha256": "ae586c5ecf722d42e478e95d3adbbec9d21b932123bce58a4deae07e141ff7ec"
+            "sha256": "e2a69fe486e70b4268a1dd55fd801d86d8800a8d45a8aca4b2127ee288eb6c90"
           }
         }
       }
@@ -33,10 +33,10 @@
       "stable": {
         "root_url": "http://127.0.0.1:0/bottles",
         "files": {
-          "arm64_sonoma": {
+          "all": {
             "cellar": ":any_skip_relocation",
             "url": "http://127.0.0.1:0/bottles/dep-1.0.0.arm64_sonoma.bottle.tar.gz",
-            "sha256": "752ef5756d06cee7ab2f9ff5292acb3b057dd872a4edca247d8e4b48f90eddba"
+            "sha256": "88c4ce38074c981b1addcd84f21193430776ddf2d7f58bdf6464bcff1c8340b2"
           }
         }
       }
@@ -58,7 +58,17 @@
           "arm64_sonoma": {
             "cellar": ":any_skip_relocation",
             "url": "http://127.0.0.1:0/bottles/uses-dep-1.0.0.arm64_sonoma.bottle.tar.gz",
-            "sha256": "9a4f8db9993a9f5daf03d393757d902d425465197bb91fa16746ace76993460d"
+            "sha256": "1d0fffd47aaaa2059b642fcf8376f639d75b238c18b6457c758ce50b2da6dd6b"
+          },
+          "sonoma": {
+            "cellar": ":any_skip_relocation",
+            "url": "http://127.0.0.1:0/bottles/uses-dep-1.0.0.sonoma.bottle.tar.gz",
+            "sha256": "6cf0eaebebbc6f4aa645001ee3480cab677847e7299466e6d5ee2a462d3ca7bc"
+          },
+          "all": {
+            "cellar": ":any_skip_relocation",
+            "url": "http://127.0.0.1:0/bottles/uses-dep-1.0.0.all.bottle.tar.gz",
+            "sha256": "14b612d0c2e42cfa75863465698564ba13db8d9505d9ea188c297e5f0e7e6702"
           }
         }
       }
@@ -77,10 +87,10 @@
       "stable": {
         "root_url": "http://127.0.0.1:0/bottles",
         "files": {
-          "arm64_sonoma": {
+          "all": {
             "cellar": ":any_skip_relocation",
             "url": "http://127.0.0.1:0/bottles/multi@1-1.0.0.arm64_sonoma.bottle.tar.gz",
-            "sha256": "b10f93ad5c33cf9edb84c22e08397e95fed2ee0d0e02f21ddddfa65b71e93408"
+            "sha256": "0b620829ef76312fb4624897e8d87690ae9de10b36c9a4cde9e94701b0f346ea"
           }
         }
       }
@@ -99,10 +109,10 @@
       "stable": {
         "root_url": "http://127.0.0.1:0/bottles",
         "files": {
-          "arm64_sonoma": {
+          "all": {
             "cellar": ":any_skip_relocation",
             "url": "http://127.0.0.1:0/bottles/multi@2-2.0.0.arm64_sonoma.bottle.tar.gz",
-            "sha256": "213b279787792cecbb26baa632c2ab71ca443c515cc8d1f187405856aa914cc0"
+            "sha256": "7339ad281b5e8f5b09a2e6385937bef93997a36c248d93cc89dd55a845c12dd9"
           }
         }
       }
