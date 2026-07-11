@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 
-ROOT = Path.cwd()
+ROOT = Path(__file__).resolve().parents[2]
 GATES = ROOT / ".github" / "swift-cutover-gates.json"
 ALLOWED_STATUS = {"pending", "passed", "blocked"}
 
@@ -38,6 +38,9 @@ def main():
 
     seen = set()
     for gate in prerequisites:
+        if not isinstance(gate, dict):
+            fail("each prerequisite must be an object")
+
         gate_id = gate.get("id")
         status = gate.get("status")
         evidence = gate.get("evidence")
