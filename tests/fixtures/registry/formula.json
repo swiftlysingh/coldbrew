@@ -1,0 +1,112 @@
+[
+  {
+    "name": "hello",
+    "full_name": "homebrew/core/hello",
+    "tap": "homebrew/core",
+    "desc": "Fixture package with one executable",
+    "homepage": "https://example.test/hello",
+    "license": "MIT",
+    "versions": { "stable": "1.0.0", "bottle": true },
+    "bottle": {
+      "stable": {
+        "root_url": "http://127.0.0.1:0/bottles",
+        "files": {
+          "arm64_sonoma": {
+            "cellar": ":any_skip_relocation",
+            "url": "http://127.0.0.1:0/bottles/hello-1.0.0.arm64_sonoma.bottle.tar.gz",
+            "sha256": "4aa40006ae74a6e128dfce320cf1eb08f2af714261451b86cb880216b015cfef"
+          }
+        }
+      }
+    },
+    "dependencies": []
+  },
+  {
+    "name": "dep",
+    "full_name": "homebrew/core/dep",
+    "tap": "homebrew/core",
+    "desc": "Fixture dependency package",
+    "homepage": "https://example.test/dep",
+    "license": "MIT",
+    "versions": { "stable": "1.0.0", "bottle": true },
+    "bottle": {
+      "stable": {
+        "root_url": "http://127.0.0.1:0/bottles",
+        "files": {
+          "arm64_sonoma": {
+            "cellar": ":any_skip_relocation",
+            "url": "http://127.0.0.1:0/bottles/dep-1.0.0.arm64_sonoma.bottle.tar.gz",
+            "sha256": "0eac58ea294c0626728303fcfc51166a0d53b43dd1d11c4986bd0115e1da7374"
+          }
+        }
+      }
+    },
+    "dependencies": []
+  },
+  {
+    "name": "uses-dep",
+    "full_name": "homebrew/core/uses-dep",
+    "tap": "homebrew/core",
+    "desc": "Fixture package with one runtime dependency",
+    "homepage": "https://example.test/uses-dep",
+    "license": "MIT",
+    "versions": { "stable": "1.0.0", "bottle": true },
+    "bottle": {
+      "stable": {
+        "root_url": "http://127.0.0.1:0/bottles",
+        "files": {
+          "arm64_sonoma": {
+            "cellar": ":any_skip_relocation",
+            "url": "http://127.0.0.1:0/bottles/uses-dep-1.0.0.arm64_sonoma.bottle.tar.gz",
+            "sha256": "e127fbae704636f263acd464aaa0ed6dae10be567f8bdbe43e01906d0830cb45"
+          }
+        }
+      }
+    },
+    "dependencies": ["dep"]
+  },
+  {
+    "name": "multi@1",
+    "full_name": "homebrew/core/multi@1",
+    "tap": "homebrew/core",
+    "desc": "Fixture versioned package v1",
+    "homepage": "https://example.test/multi",
+    "license": "MIT",
+    "versions": { "stable": "1.0.0", "bottle": true },
+    "bottle": {
+      "stable": {
+        "root_url": "http://127.0.0.1:0/bottles",
+        "files": {
+          "arm64_sonoma": {
+            "cellar": ":any_skip_relocation",
+            "url": "http://127.0.0.1:0/bottles/multi@1-1.0.0.arm64_sonoma.bottle.tar.gz",
+            "sha256": "91d8b4891bb6e2c97f8e794d9e97658ed61196084bb721bc96e8d8de8945cfb5"
+          }
+        }
+      }
+    },
+    "dependencies": []
+  },
+  {
+    "name": "multi@2",
+    "full_name": "homebrew/core/multi@2",
+    "tap": "homebrew/core",
+    "desc": "Fixture versioned package v2",
+    "homepage": "https://example.test/multi",
+    "license": "MIT",
+    "versions": { "stable": "2.0.0", "bottle": true },
+    "bottle": {
+      "stable": {
+        "root_url": "http://127.0.0.1:0/bottles",
+        "files": {
+          "arm64_sonoma": {
+            "cellar": ":any_skip_relocation",
+            "url": "http://127.0.0.1:0/bottles/multi@2-2.0.0.arm64_sonoma.bottle.tar.gz",
+            "sha256": "692498bd90aa2d4057676387cab907429ed6f607222f7b3d2c6e41f08e601e54"
+          }
+        }
+      }
+    },
+    "dependencies": []
+  }
+]

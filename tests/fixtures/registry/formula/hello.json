@@ -1,0 +1,22 @@
+{
+  "name": "hello",
+  "full_name": "homebrew/core/hello",
+  "tap": "homebrew/core",
+  "desc": "Fixture package with one executable",
+  "homepage": "https://example.test/hello",
+  "license": "MIT",
+  "versions": { "stable": "1.0.0", "bottle": true },
+  "bottle": {
+    "stable": {
+      "root_url": "http://127.0.0.1:0/bottles",
+      "files": {
+        "arm64_sonoma": {
+          "cellar": ":any_skip_relocation",
+          "url": "http://127.0.0.1:0/bottles/hello-1.0.0.arm64_sonoma.bottle.tar.gz",
+          "sha256": "4aa40006ae74a6e128dfce320cf1eb08f2af714261451b86cb880216b015cfef"
+        }
+      }
+    }
+  },
+  "dependencies": []
+}

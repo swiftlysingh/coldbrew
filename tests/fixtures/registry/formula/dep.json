@@ -1,0 +1,22 @@
+{
+  "name": "dep",
+  "full_name": "homebrew/core/dep",
+  "tap": "homebrew/core",
+  "desc": "Fixture dependency package",
+  "homepage": "https://example.test/dep",
+  "license": "MIT",
+  "versions": { "stable": "1.0.0", "bottle": true },
+  "bottle": {
+    "stable": {
+      "root_url": "http://127.0.0.1:0/bottles",
+      "files": {
+        "arm64_sonoma": {
+          "cellar": ":any_skip_relocation",
+          "url": "http://127.0.0.1:0/bottles/dep-1.0.0.arm64_sonoma.bottle.tar.gz",
+          "sha256": "0eac58ea294c0626728303fcfc51166a0d53b43dd1d11c4986bd0115e1da7374"
+        }
+      }
+    }
+  },
+  "dependencies": []
+}
