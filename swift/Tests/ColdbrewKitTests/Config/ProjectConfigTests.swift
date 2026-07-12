@@ -17,6 +17,16 @@ import Testing
     #expect(loaded.devPackages["node"]?.version == "22")
 }
 
+@Test func projectConfigQuotesNonBarePackageNames() throws {
+    var config = ProjectConfig()
+    config.addPackage("python@3.12", version: "3.12.11", dev: false)
+
+    let toml = config.toml()
+
+    #expect(toml.contains("\"python@3.12\" = \"3.12.11\""))
+    #expect(try ProjectConfig.parse(toml).packages["python@3.12"]?.version == "3.12.11")
+}
+
 @Test func packageSpecFullExposesFields() {
     let spec = PackageSpec.full(PackageSpecFull(version: "1.7.1", tap: "user/repo", skipLink: true))
 
