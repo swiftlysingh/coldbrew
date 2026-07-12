@@ -40,3 +40,22 @@ import Testing
     #expect(bottles[0].sha256 == "deadbeef")
     #expect(bottles[0].label == "blob deadbeef")
 }
+
+@Test func cacheMergesMetadataRowsWithOrphanedBlobFiles() throws {
+    let temp = temporaryDirectory()
+    let paths = Paths(root: temp)
+    try paths.createDirectories()
+    let cache = Cache(paths: paths)
+
+    try cache.storeBlob(sha256: "tracked", data: Data("tracked".utf8))
+    try cache.recordBlobMetadata(
+        sha256: "tracked",
+        name: "hello",
+        version: "1.0.0",
+        tag: "all",
+        sizeBytes: 7
+    )
+    try cache.storeBlob(sha256: "orphan", data: Data("orphan".utf8))
+
+    #expect(Set(try cache.list().map(\.sha256)) == ["tracked", "orphan"])
+}

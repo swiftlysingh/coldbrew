@@ -110,7 +110,9 @@ public struct Cache: Sendable {
         let connection = try db.connect()
         let entries = try db.listBlobCache(connection)
         let materialized = try materialize(entries)
-        return materialized.isEmpty ? try scanBlobDirectory() : materialized
+        let represented = Set(materialized.map(\.sha256))
+        return try (materialized + scanBlobDirectory().filter { !represented.contains($0.sha256) })
+            .sorted { $0.label < $1.label }
     }
 
     public func clean(maxAge: TimeInterval? = nil) throws -> CleanResult {

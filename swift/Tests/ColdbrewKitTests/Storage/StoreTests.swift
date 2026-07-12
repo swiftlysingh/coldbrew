@@ -34,3 +34,29 @@ import Testing
     #expect(!store.entryExists(sha256: "abc123"))
     #expect(!FileManager.default.fileExists(atPath: paths.storeLock(sha256: "abc123").path))
 }
+
+@Test func storePreservesRelativeSymbolicLinks() throws {
+    let temp = temporaryDirectory()
+    let paths = Paths(root: temp.appendingPathComponent("coldbrew", isDirectory: true))
+    try paths.createDirectories()
+    let source = temp.appendingPathComponent("payload", isDirectory: true)
+    let libexec = source.appendingPathComponent("libexec", isDirectory: true)
+    let bin = source.appendingPathComponent("bin", isDirectory: true)
+    try FileManager.default.createDirectory(at: libexec, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+    try Data("tool".utf8).write(to: libexec.appendingPathComponent("tool"))
+    try FileManager.default.createSymbolicLink(
+        atPath: bin.appendingPathComponent("tool").path,
+        withDestinationPath: "../libexec/tool"
+    )
+
+    let store = Store(paths: paths)
+    _ = try store.ensureEntry(sha256: "symlink", sourceDirectory: source)
+    let cellar = try store.materialize(sha256: "symlink", name: "hello", version: "1.0.0")
+
+    #expect(
+        try FileManager.default.destinationOfSymbolicLink(
+            atPath: cellar.appendingPathComponent("bin/tool").path
+        ) == "../libexec/tool"
+    )
+}

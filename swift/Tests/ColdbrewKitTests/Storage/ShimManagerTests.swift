@@ -14,11 +14,23 @@ import Testing
     #expect(manager.hasShim(binary: "hello"))
     let content = try String(contentsOf: paths.shim("hello"))
     #expect(content.contains("# Coldbrew shim for hello/hello"))
-    #expect(content.contains("exec crew exec hello hello"))
+    #expect(content.contains("exec crew exec 'hello' 'hello'"))
     #expect(try manager.listShims().map(\.package) == ["hello"])
 
     try manager.removeShims(binaries: ["hello"])
     #expect(!manager.hasShim(binary: "hello"))
+}
+
+@Test func shimManagerShellQuotesPackageAndBinaryNames() throws {
+    let temp = temporaryDirectory()
+    let paths = Paths(root: temp)
+    try paths.createDirectories()
+    let manager = ShimManager(paths: paths)
+
+    _ = try manager.createShims(name: "pkg'; echo injected", version: "1.0.0", binaries: ["tool'; false"])
+
+    let content = try String(contentsOf: paths.shim("tool'; false"))
+    #expect(content.contains("exec crew exec 'pkg'\\''; echo injected' 'tool'\\''; false'"))
 }
 
 @Test func shimManagerResolvesBinaryFromProjectThenDefaults() throws {
