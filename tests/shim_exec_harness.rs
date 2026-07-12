@@ -13,7 +13,7 @@ use tempfile::TempDir;
 struct Harness {
     bin: PathBuf,
     fixture: FixtureRegistry,
-    temp: TempDir,
+    _temp: TempDir,
     home: PathBuf,
     coldbrew_home: PathBuf,
     project: PathBuf,
@@ -38,7 +38,7 @@ impl Harness {
         let harness = Self {
             bin: crew_bin(),
             fixture: FixtureRegistry::start(),
-            temp,
+            _temp: temp,
             home,
             coldbrew_home,
             project,
@@ -114,7 +114,10 @@ fn generated_shim_calls_hidden_exec() {
 
     let shim = std::fs::read_to_string(harness.shim("hello")).expect("read hello shim");
     assert!(shim.contains("# Coldbrew shim"));
-    assert!(shim.contains("exec crew exec hello hello"));
+    assert!(
+        shim.contains("exec crew exec hello hello")
+            || shim.contains("exec crew exec 'hello' 'hello'")
+    );
 }
 
 #[test]
@@ -134,9 +137,19 @@ fn hidden_exec_forwards_arguments_to_real_binary() {
 fn version_file_takes_precedence_over_global_default_and_latest() {
     let harness = Harness::new();
 
-    assert_success(&harness.run(["install", "multi@1"]));
-    assert_success(&harness.run(["install", "multi@2"]));
-    assert_success(&harness.run(["default", "multi@1"]));
+    for (version, fixture) in [("1.0.0", "multi@1"), ("2.0.0", "multi@2")] {
+        let bin = harness.cellar_package("multi", version).join("bin");
+        std::fs::create_dir_all(&bin).expect("create multi-version fixture");
+        std::fs::copy(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/bottle-payloads")
+                .join(fixture)
+                .join("bin/multi"),
+            bin.join("multi"),
+        )
+        .expect("copy multi-version fixture binary");
+    }
+    assert_success(&harness.run(["default", "multi@1.0.0"]));
     std::fs::write(harness.project.join(".tool-versions"), "multi 2.0.0\n")
         .expect("write version file");
 

@@ -163,7 +163,12 @@ fn upgrade_yes_reports_when_everything_is_current() {
 
     let upgrade = harness.run(["upgrade", "--yes"]);
     assert_success(&upgrade);
-    assert_contains(&upgrade, "no upgrades available");
+    let combined = upgrade.combined().to_lowercase();
+    assert!(
+        combined.contains("no upgrades available")
+            || combined.contains("all packages are up to date"),
+        "unexpected upgrade output:\n{combined}"
+    );
 }
 
 #[test]

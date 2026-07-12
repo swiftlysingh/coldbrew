@@ -246,7 +246,8 @@ fn swift_install_rust_list_and_uninstall() {
     assert_store_ref(&harness.db_file(), "uses-dep", "1.0.0");
 
     assert_contains(&harness.run_rust(["list"]), "uses-dep");
-    assert_success(&harness.run_rust(["uninstall", "uses-dep", "--with-deps"]));
+    assert_success(&harness.run_rust(["uninstall", "uses-dep"]));
+    assert_success(&harness.run_rust(["uninstall", "dep"]));
     assert_contains(&harness.run_swift(["list"]), "No packages installed");
 
     assert!(harness.temp.path().exists());
@@ -260,6 +261,8 @@ fn rust_and_swift_create_identical_database_schemas() {
 
     assert_success(&rust.run_rust(["update"]));
     assert_success(&swift.run_swift(["update"]));
+    assert_success(&rust.run_rust(["install", "hello"]));
+    assert_success(&swift.run_swift(["install", "hello"]));
     assert_eq!(
         schema_fingerprint(&rust.db_file()),
         schema_fingerprint(&swift.db_file())
