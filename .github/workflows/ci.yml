@@ -2,6 +2,8 @@ name: CI
 
 on:
   push:
+  pull_request:
+    branches: [swift-main]
 
 jobs:
   test:
@@ -108,3 +110,23 @@ jobs:
         if: steps.swift-package.outputs.present == 'true' && steps.swift-toolchain.outputs.present == 'true'
         working-directory: swift
         run: swift test
+
+  harness-swift:
+    name: Harness against Swift (allowed to fail)
+    runs-on: macos-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Swift binary
+        working-directory: swift
+        run: swift build
+
+      - name: Test harness against Swift
+        env:
+          CREW_BIN: ${{ github.workspace }}/swift/.build/debug/crew
+        run: cargo test --test integration --test cli_contract
