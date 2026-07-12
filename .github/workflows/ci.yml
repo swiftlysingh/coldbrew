@@ -6,7 +6,7 @@ on:
 jobs:
   test:
     name: Test (${{ matrix.name }})
-    runs-on: ${{ matrix.self_hosted }}
+    runs-on: ${{ matrix.github }}
     strategy:
       fail-fast: false
       matrix:
@@ -26,6 +26,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      - name: Ensure Rust components
+        run: rustup component add rustfmt clippy
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
