@@ -32,6 +32,7 @@ public struct CleanResult: Equatable, Sendable {
 }
 
 public struct Cache: Sendable {
+    private static let metadataLock = NSLock()
     public let paths: Paths
 
     public init(paths: Paths) {
@@ -87,6 +88,8 @@ public struct Cache: Sendable {
         tag: String?,
         sizeBytes: UInt64
     ) throws {
+        Self.metadataLock.lock()
+        defer { Self.metadataLock.unlock() }
         let db = Database(paths: paths)
         let connection = try db.connect()
         try db.upsertBlobCache(connection, sha256: sha256, name: name, version: version, tag: tag, sizeBytes: sizeBytes)

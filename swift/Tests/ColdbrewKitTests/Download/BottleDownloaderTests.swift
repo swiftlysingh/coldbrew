@@ -100,15 +100,15 @@ import Testing
     let cache = Cache(paths: Paths(root: root.appendingPathComponent("coldbrew", isDirectory: true)))
     try cache.paths.createDirectories()
 
-    await withTaskGroup(of: BottleDownloadResult.self) { group in
+    try await withThrowingTaskGroup(of: BottleDownloadResult.self) { group in
         for _ in 0..<2 {
             group.addTask {
-                try! await BottleDownloader(cache: cache).downloadToCache(
+                try await BottleDownloader(cache: cache).downloadToCache(
                     BottleDownloadRequest(url: source, sha256: sha)
                 )
             }
         }
-        for await result in group {
+        for try await result in group {
             #expect(result.path == cache.blobPath(sha256: sha))
         }
     }
