@@ -137,17 +137,30 @@ fn hidden_exec_forwards_arguments_to_real_binary() {
 fn version_file_takes_precedence_over_global_default_and_latest() {
     let harness = Harness::new();
 
+    assert_success(&harness.run(["install", "multi@1"]));
+    assert_success(&harness.run(["install", "multi@2"]));
     for (version, fixture) in [("1.0.0", "multi@1"), ("2.0.0", "multi@2")] {
-        let bin = harness.cellar_package("multi", version).join("bin");
+        let source = harness.cellar_package(fixture, version);
+        let destination = harness.cellar_package("multi", version);
+        let bin = destination.join("bin");
         std::fs::create_dir_all(&bin).expect("create multi-version fixture");
-        std::fs::copy(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("tests/fixtures/bottle-payloads")
-                .join(fixture)
-                .join("bin/multi"),
-            bin.join("multi"),
+        std::fs::copy(source.join("bin/multi"), bin.join("multi"))
+            .expect("copy multi-version fixture binary");
+
+        let mut metadata: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(source.join(".coldbrew.json"))
+                .expect("read fixture metadata"),
         )
-        .expect("copy multi-version fixture binary");
+        .expect("decode fixture metadata");
+        metadata["package"]["name"] = "multi".into();
+        metadata["package"]["version"] = version.into();
+        metadata["package"]["cellar_path"] =
+            destination.to_string_lossy().to_string().into();
+        std::fs::write(
+            destination.join(".coldbrew.json"),
+            serde_json::to_vec_pretty(&metadata).expect("encode fixture metadata"),
+        )
+        .expect("write fixture metadata");
     }
     assert_success(&harness.run(["default", "multi@1.0.0"]));
     std::fs::write(harness.project.join(".tool-versions"), "multi 2.0.0\n")
