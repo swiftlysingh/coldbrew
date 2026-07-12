@@ -128,38 +128,76 @@ fn assert_contains(output: &Output, needle: &str) {
     );
 }
 
-fn assert_schema_fingerprint(db_file: &Path) {
-    assert!(db_file.exists(), "expected database at {}", db_file.display());
+#[derive(Debug, PartialEq, Eq)]
+struct SchemaFingerprint {
+    user_version: i32,
+    objects: Vec<(String, String, String)>,
+}
+
+fn schema_fingerprint(db_file: &Path) -> SchemaFingerprint {
+    assert!(
+        db_file.exists(),
+        "expected database at {}",
+        db_file.display()
+    );
     let conn = Connection::open(db_file).expect("open coldbrew database");
     let user_version: i32 = conn
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .expect("read user_version");
-    assert_eq!(user_version, 3);
 
     let mut stmt = conn
         .prepare(
-            "SELECT name, sql
+            "SELECT type, name, sql
              FROM sqlite_master
              WHERE type IN ('table', 'index') AND name NOT LIKE 'sqlite_%'
-             ORDER BY name",
+             ORDER BY type, name",
         )
         .expect("prepare schema fingerprint query");
     let rows = stmt
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)))
-        .expect("query schema fingerprint");
-    let fingerprint = rows
-        .map(|row| {
-            let (name, sql) = row.expect("read schema row");
-            format!("{}:{}", name, sql.unwrap_or_default())
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
         })
-        .collect::<Vec<_>>()
-        .join("\n");
+        .expect("query schema fingerprint");
+    let objects = rows
+        .map(|row| {
+            let (kind, name, sql) = row.expect("read schema row");
+            let sql = sql
+                .unwrap_or_default()
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            (kind, name, sql)
+        })
+        .collect();
 
-    assert!(fingerprint.contains("api_cache:CREATE TABLE api_cache"));
-    assert!(fingerprint.contains("blob_cache:CREATE TABLE blob_cache"));
-    assert!(fingerprint.contains("store_entries:CREATE TABLE store_entries"));
-    assert!(fingerprint.contains("store_refs:CREATE TABLE store_refs"));
-    assert!(fingerprint.contains("store_refs_sha_idx:CREATE INDEX store_refs_sha_idx"));
+    SchemaFingerprint {
+        user_version,
+        objects,
+    }
+}
+
+fn assert_schema_fingerprint(db_file: &Path) {
+    let fingerprint = schema_fingerprint(db_file);
+    assert_eq!(fingerprint.user_version, 3);
+
+    assert_eq!(
+        fingerprint
+            .objects
+            .iter()
+            .map(|(kind, name, _)| (kind.as_str(), name.as_str()))
+            .collect::<Vec<_>>(),
+        [
+            ("index", "store_refs_sha_idx"),
+            ("table", "api_cache"),
+            ("table", "blob_cache"),
+            ("table", "store_entries"),
+            ("table", "store_refs"),
+        ]
+    );
 }
 
 fn assert_store_ref(db_file: &Path, package: &str, version: &str) {
@@ -205,4 +243,18 @@ fn swift_install_rust_list_and_uninstall() {
     assert_contains(&harness.run_swift(["list"]), "No packages installed");
 
     assert!(harness.temp.path().exists());
+}
+
+#[test]
+#[ignore = "requires Swift binary and fixture install wiring"]
+fn rust_and_swift_create_identical_database_schemas() {
+    let rust = CrossBinaryHarness::new();
+    let swift = CrossBinaryHarness::new();
+
+    assert_success(&rust.run_rust(["install", "hello"]));
+    assert_success(&swift.run_swift(["install", "hello"]));
+    assert_eq!(
+        schema_fingerprint(&rust.db_file()),
+        schema_fingerprint(&swift.db_file())
+    );
 }
