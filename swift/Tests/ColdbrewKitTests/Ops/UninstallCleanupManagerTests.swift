@@ -48,6 +48,24 @@ import Testing
     #expect(!FileManager.default.fileExists(atPath: paths.cellarPackage("dep", version: "1.0.0").path))
 }
 
+@Test func uninstallWithDepsRecursivelyRemovesOrphanChain() async throws {
+    let root = temporaryDirectory()
+    let paths = Paths(root: root.appendingPathComponent("coldbrew", isDirectory: true))
+    let leaf = try makeCleanupBottle(root: root, name: "leaf", version: "1.0.0", binary: "leaf")
+    let middle = try makeCleanupBottle(root: root, name: "middle", version: "1.0.0", binary: "middle")
+    let app = try makeCleanupBottle(root: root, name: "app-chain", version: "1.0.0", binary: "app-chain")
+    _ = try await InstallManager(paths: paths).install([
+        InstallRequest(name: "leaf", version: "1.0.0", bottleURL: leaf.url, sha256: leaf.sha, tag: "fixture", installedAsDependency: true),
+        InstallRequest(name: "middle", version: "1.0.0", bottleURL: middle.url, sha256: middle.sha, tag: "fixture", runtimeDependencies: [RuntimeDependencyRecord(name: "leaf", version: "1.0.0", path: paths.cellarPackage("leaf", version: "1.0.0").path)], installedAsDependency: true),
+        InstallRequest(name: "app-chain", version: "1.0.0", bottleURL: app.url, sha256: app.sha, tag: "fixture", runtimeDependencies: [RuntimeDependencyRecord(name: "middle", version: "1.0.0", path: paths.cellarPackage("middle", version: "1.0.0").path)]),
+    ])
+
+    let result = try UninstallCleanupManager(paths: paths).uninstall("app-chain", options: UninstallOptions(withDeps: true))
+
+    #expect(result.removed.map(\.name) == ["app-chain", "middle", "leaf"])
+    #expect(try Cellar(paths: paths).listPackages().isEmpty)
+}
+
 @Test func cleanupCollectsAndRemovesCacheAndOrphanedStore() throws {
     let root = temporaryDirectory()
     let paths = Paths(root: root)

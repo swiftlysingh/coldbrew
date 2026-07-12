@@ -106,8 +106,8 @@ public struct UninstallCleanupManager: Sendable {
         }
 
         if options.withDeps {
-            for dep in try orphanDependencies() {
-                _ = try uninstall("\(dep.name)@\(dep.version)")
+            while let dep = try orphanDependencies().first {
+                removed += try uninstall("\(dep.name)@\(dep.version)").removed
             }
         }
         return UninstallResult(removed: removed)
