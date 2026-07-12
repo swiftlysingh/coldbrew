@@ -32,7 +32,7 @@ impl FixtureRegistry {
     }
 }
 
-fn handle_connection(mut stream: TcpStream, root: &PathBuf, base_url: &str) {
+fn handle_connection(mut stream: TcpStream, root: &Path, base_url: &str) {
     let mut buffer = [0_u8; 4096];
     let Ok(read) = stream.read(&mut buffer) else {
         return;
