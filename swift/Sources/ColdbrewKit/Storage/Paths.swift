@@ -95,7 +95,9 @@ public struct Paths: Equatable, Sendable {
     }
 
     public func isColdbrewPath(_ path: URL) -> Bool {
-        path.path == root.path || path.path.hasPrefix(root.path + "/")
+        let rootPath = root.standardizedFileURL.resolvingSymlinksInPath().path
+        let candidatePath = path.standardizedFileURL.resolvingSymlinksInPath().path
+        return candidatePath == rootPath || candidatePath.hasPrefix(rootPath + "/")
     }
 }
 

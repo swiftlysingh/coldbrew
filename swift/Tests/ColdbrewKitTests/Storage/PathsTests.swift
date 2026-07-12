@@ -85,3 +85,14 @@ import Darwin
     #expect(findProjectFile(startDirectory: subdirectory)?.path == project.path)
     #expect(lockfilePath(projectFile: project).path == root.appendingPathComponent("coldbrew.lock").path)
 }
+
+@Test func pathsRejectTraversalAndSymlinkEscape() throws {
+    let root = temporaryDirectory()
+    let paths = Paths(root: root)
+    let outside = temporaryDirectory()
+    let link = root.appendingPathComponent("link")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
+
+    #expect(!paths.isColdbrewPath(root.appendingPathComponent("../outside")))
+    #expect(!paths.isColdbrewPath(link.appendingPathComponent("file")))
+}

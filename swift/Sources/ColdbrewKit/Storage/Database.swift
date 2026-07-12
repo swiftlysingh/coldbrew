@@ -184,6 +184,10 @@ public struct Database: Sendable {
     private func migrate(_ connection: SQLiteConnection) throws {
         var version = try Int32(connection.int64("PRAGMA user_version") ?? 0)
 
+        guard version <= coldbrewSchemaVersion else {
+            throw ColdbrewError.database("database schema version \(version) is newer than supported version \(coldbrewSchemaVersion)")
+        }
+
         if version < 1 {
             try connection.execute(
                 """
@@ -242,9 +246,7 @@ public struct Database: Sendable {
             version = 3
         }
 
-        if version != coldbrewSchemaVersion {
-            try connection.execute("PRAGMA user_version = \(coldbrewSchemaVersion)")
-        }
+        assert(version == coldbrewSchemaVersion)
     }
 }
 
