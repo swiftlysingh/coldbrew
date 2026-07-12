@@ -20,11 +20,23 @@ public struct Platform: Equatable, Sendable {
     }
 
     public var bottleTags: [String] {
+        let macOSVersions: [String]
+        #if os(macOS)
+        let current = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+        macOSVersions = [
+            (current >= 15 ? "sequoia" : nil),
+            (current >= 14 ? "sonoma" : nil),
+            (current >= 13 ? "ventura" : nil),
+        ].compactMap { $0 }
+        #else
+        macOSVersions = ["sequoia", "sonoma", "ventura"]
+        #endif
+
         switch (os, architecture) {
         case (.macOS, .arm64):
-            return ["arm64_sequoia", "arm64_sonoma", "arm64_ventura"]
+            return macOSVersions.map { "arm64_\($0)" } + ["all"]
         case (.macOS, .x86_64):
-            return ["sequoia", "sonoma", "ventura"]
+            return macOSVersions + ["all"]
         case (.linux, .x86_64):
             return ["x86_64_linux"]
         case (.linux, .arm64):
