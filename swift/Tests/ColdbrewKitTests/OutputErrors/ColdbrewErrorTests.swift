@@ -19,6 +19,7 @@ import Testing
     #expect(ColdbrewError.indexNotInitialized.suggestion == "Run 'crew update' to fetch the latest package index")
     #expect(ColdbrewError.indexStale.suggestion == "Run 'crew update' to fetch the latest package index")
     #expect(ColdbrewError.lockfileNotFound.suggestion == "Run 'crew lock' to create a lockfile from coldbrew.toml")
+    #expect(ColdbrewError.lockfileOutOfSync.suggestion == "Run 'crew lock' to regenerate the lockfile from coldbrew.toml")
     #expect(ColdbrewError.projectNotFound.suggestion == "Run 'crew init' to create a coldbrew.toml in this directory")
     #expect(ColdbrewError.noBottleAvailable(package: "jq", platform: "linux").suggestion == "This package may require building from source, which is not yet supported")
     #expect(ColdbrewError.packagePinned("jq").suggestion == "Use 'crew unpin <package>' to allow upgrades")
