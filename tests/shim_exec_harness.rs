@@ -68,6 +68,10 @@ impl Harness {
     fn shim(&self, binary: &str) -> PathBuf {
         self.coldbrew_home.join("bin").join(binary)
     }
+
+    fn cellar_package(&self, name: &str, version: &str) -> PathBuf {
+        self.coldbrew_home.join("cellar").join(name).join(version)
+    }
 }
 
 fn crew_bin() -> PathBuf {
@@ -135,8 +139,21 @@ fn exec_sets_dependency_library_paths() {
     let harness = Harness::new();
 
     assert_success(&harness.run(["install", "uses-dep"]));
+    std::fs::write(
+        harness
+            .cellar_package("uses-dep", "1.0.0")
+            .join("bin/uses-dep"),
+        "#!/bin/sh\nprintf '%s\\n' \"$DYLD_LIBRARY_PATH\"\n",
+    )
+    .expect("write dependency-path fixture");
 
     let output = harness.run(["exec", "uses-dep", "uses-dep"]);
     assert_success(&output);
-    assert!(harness.temp.path().exists());
+    assert_contains(
+        &output,
+        &harness
+            .cellar_package("dep", "1.0.0")
+            .join("lib")
+            .to_string_lossy(),
+    );
 }
