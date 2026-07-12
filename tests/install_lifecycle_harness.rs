@@ -83,7 +83,7 @@ impl Harness {
 fn crew_bin() -> PathBuf {
     env::var_os("CREW_BIN")
         .map(PathBuf::from)
-        .unwrap_or_else(|| assert_cmd::cargo::cargo_bin!("crew"))
+        .unwrap_or_else(|| assert_cmd::cargo::cargo_bin!("crew").to_path_buf())
 }
 
 fn assert_success(output: &Output) {
