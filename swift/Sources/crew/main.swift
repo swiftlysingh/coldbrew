@@ -1,3 +1,4 @@
+import Foundation
 import ArgumentParser
 import ColdbrewKit
 
@@ -11,7 +12,7 @@ struct NotImplemented: Error, CustomStringConvertible {
 
 func notImplemented(_ command: String) throws {
     if CommandLine.arguments.contains("--verbose") {
-        FileHandle.standardError.write(Data("[verbose] (command)\n".utf8))
+        FileHandle.standardError.write(Data("[verbose] \(command)\n".utf8))
     }
     throw NotImplemented(command: command)
 }
