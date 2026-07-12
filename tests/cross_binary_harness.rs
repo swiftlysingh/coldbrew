@@ -251,7 +251,9 @@ fn rust_and_swift_create_identical_database_schemas() {
     let rust = CrossBinaryHarness::new();
     let swift = CrossBinaryHarness::new();
 
+    assert_success(&rust.run_rust(["update"]));
     assert_success(&rust.run_rust(["install", "hello"]));
+    assert_success(&swift.run_swift(["update"]));
     assert_success(&swift.run_swift(["install", "hello"]));
     assert_eq!(
         schema_fingerprint(&rust.db_file()),
