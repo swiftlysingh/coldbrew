@@ -47,3 +47,13 @@ import Testing
     #expect(config.packages["jq"]?.tap == "homebrew/core")
     #expect(config.packages["jq"]?.skipLink == true)
 }
+
+@Test func projectConfigParsesQuotedInlinePackageKey() throws {
+    let config = try ProjectConfig.parse("""
+    [packages]
+    "python@3.12" = { version = "3.12.11", skip_link = true }
+    """)
+
+    #expect(config.packages["python@3.12"]?.version == "3.12.11")
+    #expect(config.packages["python@3.12"]?.skipLink == true)
+}

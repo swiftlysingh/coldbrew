@@ -142,7 +142,7 @@ enum MiniTOML {
                 guard let equals = part.firstIndex(of: "=") else {
                     throw ConfigError.invalidTOML("Invalid inline table entry: \(part)")
                 }
-                let key = part[..<equals].trimmingCharacters(in: .whitespaces)
+                let key = parseKey(String(part[..<equals]))
                 let raw = part[part.index(after: equals)...].trimmingCharacters(in: .whitespaces)
                 table[key] = try parseValue(String(raw))
             }
