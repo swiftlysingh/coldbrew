@@ -133,7 +133,15 @@ fn install_force_reinstalls_existing_package() {
     let harness = Harness::new();
 
     assert_success(&harness.run(["install", "hello"]));
+    let marker = harness
+        .cellar_package("hello", "1.0.0")
+        .join("stale-marker");
+    std::fs::write(&marker, "must be replaced").expect("write replacement marker");
     assert_success(&harness.run(["install", "--force", "hello"]));
+    assert!(
+        !marker.exists(),
+        "force install must replace the existing cellar"
+    );
 }
 
 #[test]
@@ -153,8 +161,13 @@ fn list_and_which_report_installed_package() {
     let harness = Harness::new();
 
     assert_success(&harness.run(["install", "hello"]));
-    assert_contains(&harness.run(["list"]), "hello");
-    assert_contains(&harness.run(["which", "hello"]), "hello");
+    let list = harness.run(["list"]);
+    assert_success(&list);
+    assert_contains(&list, "hello");
+
+    let which = harness.run(["which", "hello"]);
+    assert_success(&which);
+    assert_contains(&which, &harness.shim("hello").to_string_lossy());
 }
 
 #[test]
