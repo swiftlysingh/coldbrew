@@ -33,7 +33,7 @@ public struct TapManager: Sendable {
             throw ColdbrewError.tapAlreadyExists("\(user)/\(repo)")
         }
         try FileManager.default.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try runGit(["clone", "https://github.com/\(user)/\(repo).git", path.path])
+        try Self.runGit(["clone", "https://github.com/\(user)/\(repo).git", path.path])
         return Tap(user: user, repo: repo, path: path)
     }
 
@@ -71,14 +71,22 @@ public struct TapManager: Sendable {
         guard FileManager.default.fileExists(atPath: path.path) else {
             throw ColdbrewError.tapNotFound("\(user)/\(repo)")
         }
-        try runGit(["-C", path.path, "pull", "--ff-only"])
+        try Self.runGit(["-C", path.path, "pull", "--ff-only"])
     }
 
-    private func runGit(_ arguments: [String]) throws {
+    static func runGit(_ arguments: [String]) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["git"] + arguments
-        let stderr = Pipe()
+        let stderrURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("stderr")
+        FileManager.default.createFile(atPath: stderrURL.path, contents: nil)
+        let stderr = try FileHandle(forWritingTo: stderrURL)
+        defer {
+            try? stderr.close()
+            try? FileManager.default.removeItem(at: stderrURL)
+        }
         process.standardError = stderr
         do {
             try process.run()
@@ -86,8 +94,9 @@ public struct TapManager: Sendable {
             throw ColdbrewError.git(error.localizedDescription)
         }
         process.waitUntilExit()
+        try stderr.close()
         guard process.terminationStatus == 0 else {
-            let message = String(decoding: stderr.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            let message = String(decoding: try Data(contentsOf: stderrURL), as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             throw ColdbrewError.git(message)
         }

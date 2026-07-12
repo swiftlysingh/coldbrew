@@ -2,6 +2,10 @@ import Foundation
 import Testing
 @testable import ColdbrewKit
 
+@Test func tapGitRunnerHandlesLargeStderrWithoutDeadlock() throws {
+    try TapManager.runGit(["-c", "alias.noisy=!head -c 262144 /dev/zero >&2", "noisy"])
+}
+
 @Test func tapManagerParsesHomebrewTapNamesLikeRust() throws {
     let parsed = try TapManager.parse("user/core")
     #expect(parsed.user == "user")
