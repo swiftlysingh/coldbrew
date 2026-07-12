@@ -81,6 +81,14 @@ import Testing
     }
 }
 
+@Test func globalOutputFlagsAreFunctional() throws {
+    let quiet = try runCrew("--quiet", "list")
+    let verbose = try runCrew("--verbose", "list")
+
+    #expect(!quiet.text.contains("[verbose]"))
+    #expect(verbose.text.contains("[verbose] list"))
+}
+
 private struct CrewOutput {
     let status: Int32
     let text: String
