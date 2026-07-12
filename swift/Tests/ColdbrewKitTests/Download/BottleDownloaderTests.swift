@@ -44,6 +44,26 @@ import Testing
     #expect(result.path == paths.cacheBlob(sha256: sha))
 }
 
+@Test func bottleDownloaderReplacesInvalidCachedBlob() async throws {
+    let root = temporaryDirectory()
+    let source = root.appendingPathComponent("hello.tar.gz")
+    let data = Data("fixture bottle".utf8)
+    try data.write(to: source)
+    let sha = SHA256.hash(data)
+    let paths = Paths(root: root.appendingPathComponent("coldbrew", isDirectory: true))
+    try paths.createDirectories()
+    let cache = Cache(paths: paths)
+    try cache.storeBlob(sha256: sha, data: Data("corrupt blob".utf8))
+
+    let result = try await BottleDownloader(cache: cache).downloadToCache(
+        BottleDownloadRequest(url: source, sha256: sha)
+    )
+
+    #expect(result.downloaded)
+    #expect(try SHA256.verify(file: result.path, expected: sha))
+    #expect(try Data(contentsOf: result.path) == data)
+}
+
 @Test func bottleDownloaderRemovesTempFileOnChecksumMismatch() async throws {
     let root = temporaryDirectory()
     let source = root.appendingPathComponent("hello.tar.gz")

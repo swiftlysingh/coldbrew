@@ -40,16 +40,19 @@ public final class BottleDownloader: Sendable {
         _ request: BottleDownloadRequest,
         progress: @Sendable (UInt64, UInt64) -> Void = { _, _ in }
     ) async throws -> BottleDownloadResult {
-        if let cached = cache.cachedPath(sha256: request.sha256), try SHA256.verify(file: cached, expected: request.sha256) {
-            let size = try cached.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-            try cache.recordBlobMetadata(
-                sha256: request.sha256,
-                name: request.name,
-                version: request.version,
-                tag: request.tag,
-                sizeBytes: UInt64(size)
-            )
-            return BottleDownloadResult(path: cached, bytesDownloaded: 0, downloaded: false)
+        if let cached = cache.cachedPath(sha256: request.sha256) {
+            if try SHA256.verify(file: cached, expected: request.sha256) {
+                let size = try cached.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                try cache.recordBlobMetadata(
+                    sha256: request.sha256,
+                    name: request.name,
+                    version: request.version,
+                    tag: request.tag,
+                    sizeBytes: UInt64(size)
+                )
+                return BottleDownloadResult(path: cached, bytesDownloaded: 0, downloaded: false)
+            }
+            try cache.remove(sha256: request.sha256)
         }
 
         try cache.initialize()
