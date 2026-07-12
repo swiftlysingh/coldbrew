@@ -146,6 +146,8 @@ fn root_help_lists_public_commands_and_global_flags() {
 #[test]
 fn command_help_exposes_current_flags_and_arguments() {
     let cases: &[(&[&str], &[&str])] = &[
+        (&["search", "--help"], &["<QUERY>", "--extended"]),
+        (&["info", "--help"], &["<PACKAGE>", "--format"]),
         (
             &["install", "--help"],
             &["[PACKAGES]...", "--lock", "--skip-deps", "--force"],
