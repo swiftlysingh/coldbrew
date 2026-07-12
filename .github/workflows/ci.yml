@@ -2,11 +2,13 @@ name: CI
 
 on:
   push:
+  pull_request:
+    branches: [swift-main]
 
 jobs:
   test:
     name: Test (${{ matrix.name }})
-    runs-on: ${{ matrix.self_hosted }}
+    runs-on: ${{ matrix.github }}
     strategy:
       fail-fast: false
       matrix:
@@ -27,6 +29,9 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Ensure Rust components
+        run: rustup component add rustfmt clippy
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
@@ -38,3 +43,90 @@ jobs:
 
       - name: Test
         run: cargo test
+
+  harness-rust:
+    name: Harness against Rust
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Test harness
+        run: cargo test --test integration --test cli_contract
+
+  swift:
+    name: Swift (${{ matrix.name }})
+    runs-on: ${{ matrix.runs_on }}
+    continue-on-error: ${{ matrix.allow_failure }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            runs_on: macos-latest
+            allow_failure: false
+          - name: linux
+            runs_on: ubuntu-latest
+            allow_failure: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Swift package
+        id: swift-package
+        shell: bash
+        run: |
+          if [ -f swift/Package.swift ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check Swift toolchain
+        id: swift-toolchain
+        if: steps.swift-package.outputs.present == 'true'
+        shell: bash
+        run: |
+          if command -v swift >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Swift toolchain not available on this runner; PR024 owns the required Linux Static SDK gate"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        if: steps.swift-package.outputs.present == 'true' && steps.swift-toolchain.outputs.present == 'true'
+        working-directory: swift
+        run: swift build
+
+      - name: Test
+        if: steps.swift-package.outputs.present == 'true' && steps.swift-toolchain.outputs.present == 'true'
+        working-directory: swift
+        run: swift test
+
+  harness-swift:
+    name: Harness against Swift (allowed to fail)
+    runs-on: macos-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Swift binary
+        working-directory: swift
+        run: swift build
+
+      - name: Test harness against Swift
+        env:
+          CREW_BIN: ${{ github.workspace }}/swift/.build/debug/crew
+        run: cargo test --test integration --test cli_contract
