@@ -92,6 +92,7 @@ import Darwin
     let outside = temporaryDirectory()
     let link = root.appendingPathComponent("link")
     try FileManager.default.createSymbolicLink(at: link, withDestinationURL: outside)
+    try "x".write(to: outside.appendingPathComponent("file"), atomically: true, encoding: .utf8)
 
     #expect(!paths.isColdbrewPath(root.appendingPathComponent("../outside")))
     #expect(!paths.isColdbrewPath(link.appendingPathComponent("file")))
