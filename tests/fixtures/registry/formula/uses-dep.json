@@ -13,7 +13,7 @@
         "arm64_sonoma": {
           "cellar": ":any_skip_relocation",
           "url": "http://127.0.0.1:0/bottles/uses-dep-1.0.0.arm64_sonoma.bottle.tar.gz",
-          "sha256": "9a4f8db9993a9f5daf03d393757d902d425465197bb91fa16746ace76993460d"
+          "sha256": "e127fbae704636f263acd464aaa0ed6dae10be567f8bdbe43e01906d0830cb45"
         }
       }
     }

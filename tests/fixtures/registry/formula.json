@@ -14,7 +14,7 @@
           "arm64_sonoma": {
             "cellar": ":any_skip_relocation",
             "url": "http://127.0.0.1:0/bottles/hello-1.0.0.arm64_sonoma.bottle.tar.gz",
-            "sha256": "ae586c5ecf722d42e478e95d3adbbec9d21b932123bce58a4deae07e141ff7ec"
+            "sha256": "4aa40006ae74a6e128dfce320cf1eb08f2af714261451b86cb880216b015cfef"
           }
         }
       }
@@ -36,7 +36,7 @@
           "arm64_sonoma": {
             "cellar": ":any_skip_relocation",
             "url": "http://127.0.0.1:0/bottles/dep-1.0.0.arm64_sonoma.bottle.tar.gz",
-            "sha256": "752ef5756d06cee7ab2f9ff5292acb3b057dd872a4edca247d8e4b48f90eddba"
+            "sha256": "0eac58ea294c0626728303fcfc51166a0d53b43dd1d11c4986bd0115e1da7374"
           }
         }
       }
@@ -58,7 +58,7 @@
           "arm64_sonoma": {
             "cellar": ":any_skip_relocation",
             "url": "http://127.0.0.1:0/bottles/uses-dep-1.0.0.arm64_sonoma.bottle.tar.gz",
-            "sha256": "9a4f8db9993a9f5daf03d393757d902d425465197bb91fa16746ace76993460d"
+            "sha256": "e127fbae704636f263acd464aaa0ed6dae10be567f8bdbe43e01906d0830cb45"
           }
         }
       }
@@ -80,7 +80,7 @@
           "arm64_sonoma": {
             "cellar": ":any_skip_relocation",
             "url": "http://127.0.0.1:0/bottles/multi@1-1.0.0.arm64_sonoma.bottle.tar.gz",
-            "sha256": "b10f93ad5c33cf9edb84c22e08397e95fed2ee0d0e02f21ddddfa65b71e93408"
+            "sha256": "91d8b4891bb6e2c97f8e794d9e97658ed61196084bb721bc96e8d8de8945cfb5"
           }
         }
       }
@@ -102,7 +102,7 @@
           "arm64_sonoma": {
             "cellar": ":any_skip_relocation",
             "url": "http://127.0.0.1:0/bottles/multi@2-2.0.0.arm64_sonoma.bottle.tar.gz",
-            "sha256": "213b279787792cecbb26baa632c2ab71ca443c515cc8d1f187405856aa914cc0"
+            "sha256": "692498bd90aa2d4057676387cab907429ed6f607222f7b3d2c6e41f08e601e54"
           }
         }
       }
