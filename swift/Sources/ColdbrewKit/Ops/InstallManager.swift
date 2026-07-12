@@ -72,21 +72,42 @@ public struct InstallManager: Sendable {
         var installed: [InstalledPackageRecord] = []
 
         for request in requests {
-            if cellar.isInstalled(name: request.name, version: request.version) {
-                if options.force {
-                    try cellar.uninstall(name: request.name, version: request.version)
-                } else {
-                    throw ColdbrewError.packageAlreadyInstalled(name: request.name, version: request.version)
-                }
+            let replacing = cellar.isInstalled(name: request.name, version: request.version)
+            if replacing, !options.force {
+                throw ColdbrewError.packageAlreadyInstalled(name: request.name, version: request.version)
             }
 
             let download = downloads[request.key]!
             let entry = try store.ensureEntry(sha256: request.sha256, bottleArchive: download.path)
             try db.upsertStoreEntry(connection, sha256: request.sha256, sizeBytes: entry.sizeBytes)
-            let installPath = try store.materialize(sha256: request.sha256, name: request.name, version: request.version)
+            let installPath = paths.cellarPackage(request.name, version: request.version)
+            let staging = installPath.deletingLastPathComponent()
+                .appendingPathComponent(".\(request.version).\(UUID().uuidString).staging")
+            let backup = installPath.deletingLastPathComponent()
+                .appendingPathComponent(".\(request.version).\(UUID().uuidString).backup")
+            var swapped = false
+            defer { try? FileManager.default.removeItem(at: staging) }
+
+            if replacing {
+                try copyTree(from: entry.path, to: staging)
+            } else {
+                _ = try store.materialize(sha256: request.sha256, name: request.name, version: request.version)
+            }
             let relocator = BottleRelocator(paths: paths)
-            _ = try relocator.relocateBottle(at: installPath)
-            _ = try relocator.codesignMachOTree(at: installPath)
+            let preparedPath = replacing ? staging : installPath
+            _ = try relocator.relocateBottle(at: preparedPath)
+            _ = try relocator.codesignMachOTree(at: preparedPath)
+
+            if replacing {
+                try FileManager.default.moveItem(at: installPath, to: backup)
+                do {
+                    try FileManager.default.moveItem(at: staging, to: installPath)
+                    swapped = true
+                } catch {
+                    try? FileManager.default.moveItem(at: backup, to: installPath)
+                    throw error
+                }
+            }
 
             var package = InstalledPackageRecord(
                 name: request.name,
@@ -102,12 +123,23 @@ public struct InstallManager: Sendable {
                 installedFor: request.installedFor
             )
 
-            if options.link, !request.binaries.isEmpty {
-                try ShimManager(paths: paths).createShims(name: request.name, version: request.version, binaries: request.binaries)
-                package.linked = true
+            do {
+                if options.link, !request.binaries.isEmpty {
+                    try ShimManager(paths: paths).createShims(name: request.name, version: request.version, binaries: request.binaries)
+                    package.linked = true
+                }
+                try cellar.saveMetadata(PackageMetadataRecord(package: package, receipt: InstallReceiptRecord(source: request.bottleURL.absoluteString)))
+                try db.addStoreRef(connection, sha256: request.sha256, package: request.name, version: request.version)
+            } catch {
+                if swapped {
+                    try? FileManager.default.removeItem(at: installPath)
+                    try? FileManager.default.moveItem(at: backup, to: installPath)
+                }
+                throw error
             }
-            try cellar.saveMetadata(PackageMetadataRecord(package: package, receipt: InstallReceiptRecord(source: request.bottleURL.absoluteString)))
-            try db.addStoreRef(connection, sha256: request.sha256, package: request.name, version: request.version)
+            if swapped {
+                try? FileManager.default.removeItem(at: backup)
+            }
             installed.append(package)
         }
 
