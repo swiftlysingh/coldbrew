@@ -71,3 +71,16 @@ import Testing
     try database.deleteStoreEntry(connection, sha256: "sha256_orphan")
     #expect(try database.listOrphanedStoreEntries(connection).map { $0.sha256 } == ["sha256_referenced"])
 }
+
+@Test func databaseRejectsNewerSchema() throws {
+    let database = Database(paths: Paths(root: temporaryDirectory()))
+    let connection = try database.connect()
+    try connection.execute("PRAGMA user_version = 4")
+
+    do {
+        _ = try database.connect()
+        Issue.record("expected newer schema to be rejected")
+    } catch let error as ColdbrewError {
+        #expect(error.description.contains("newer than supported"))
+    }
+}
