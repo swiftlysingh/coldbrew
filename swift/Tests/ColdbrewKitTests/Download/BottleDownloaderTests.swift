@@ -70,3 +70,27 @@ import Testing
 
     #expect(try BottleDownloader.repository(fromBottleURL: url) == "homebrew/core/jq")
 }
+
+@Test func bottleDownloaderKeepsOneBlobWhenDownloadsRace() async throws {
+    let root = temporaryDirectory()
+    let source = root.appendingPathComponent("hello.tar.gz")
+    let data = Data("fixture bottle".utf8)
+    try data.write(to: source)
+    let sha = SHA256.hash(data)
+    let cache = Cache(paths: Paths(root: root.appendingPathComponent("coldbrew", isDirectory: true)))
+    try cache.paths.createDirectories()
+
+    await withTaskGroup(of: BottleDownloadResult.self) { group in
+        for _ in 0..<2 {
+            group.addTask {
+                try! await BottleDownloader(cache: cache).downloadToCache(
+                    BottleDownloadRequest(url: source, sha256: sha)
+                )
+            }
+        }
+        for await result in group {
+            #expect(result.path == cache.blobPath(sha256: sha))
+        }
+    }
+    #expect(try SHA256.verify(file: cache.blobPath(sha256: sha), expected: sha))
+}

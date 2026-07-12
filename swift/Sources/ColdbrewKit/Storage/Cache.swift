@@ -71,10 +71,12 @@ public struct Cache: Sendable {
     public func moveToCache(from source: URL, sha256: String) throws -> URL {
         try initialize()
         let destination = blobPath(sha256: sha256)
-        if FileManager.default.fileExists(atPath: destination.path) {
-            try FileManager.default.removeItem(at: destination)
+        do {
+            try FileManager.default.moveItem(at: source, to: destination)
+        } catch {
+            guard FileManager.default.fileExists(atPath: destination.path) else { throw error }
+            try? FileManager.default.removeItem(at: source)
         }
-        try FileManager.default.moveItem(at: source, to: destination)
         return destination
     }
 

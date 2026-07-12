@@ -75,7 +75,7 @@ public struct Paths: Equatable, Sendable {
     }
 
     public func cacheBlobTemp(sha256: String) -> URL {
-        cacheBlobsDir.appendingPathComponent("\(sha256).part")
+        cacheBlobsDir.appendingPathComponent("\(sha256).\(UUID().uuidString).part")
     }
 
     public func storeEntry(sha256: String) -> URL {
