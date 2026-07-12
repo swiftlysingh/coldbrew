@@ -18,7 +18,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from statistics import mean, median
+from statistics import median
 
 
 def env_int(name: str, default: int) -> int:
@@ -83,7 +83,6 @@ def sample(name: str, iterations: int, warmups: int, fn) -> dict:
     return {
         "scenario": name,
         "samples_ms": [round(v, 2) for v in values],
-        "mean_ms": round(mean(values), 2),
         "median_ms": round(median(values), 2),
         "min_ms": round(min(values), 2),
         "max_ms": round(max(values), 2),
@@ -180,13 +179,13 @@ def render_report(args, results: list[dict], skipped: list[str], failures: list[
         f"- shim startup budget: {args.shim_threshold_ms:g} ms",
         f"- iterations: {args.iterations} timed, {args.warmups} warmup",
         "",
-        "| scenario | implementation | mean ms | median ms | min ms | max ms | samples ms |",
-        "|---|---:|---:|---:|---:|---:|---|",
+        "| scenario | implementation | median ms | min ms | max ms | samples ms |",
+        "|---|---:|---:|---:|---:|---|",
     ]
     for item in results:
         lines.append(
-            f"| {item['scenario']} | {item['implementation']} | {item['mean_ms']:.2f} | "
-            f"{item['median_ms']:.2f} | {item['min_ms']:.2f} | {item['max_ms']:.2f} | "
+            f"| {item['scenario']} | {item['implementation']} | {item['median_ms']:.2f} | "
+            f"{item['min_ms']:.2f} | {item['max_ms']:.2f} | "
             f"{', '.join(f'{v:.2f}' for v in item['samples_ms'])} |"
         )
 
@@ -220,6 +219,10 @@ def main() -> int:
     parser.add_argument("--json", dest="json_path", type=Path, default=None)
     parser.add_argument("--exception-reason", default=os.environ.get("PERF_EXCEPTION_REASON"))
     args = parser.parse_args()
+    if args.iterations < 1:
+        parser.error("--iterations must be at least 1")
+    if args.warmups < 0:
+        parser.error("--warmups must be at least 0")
 
     rust = require_bin(args.rust_bin, "Rust")
     swift = require_bin(args.swift_bin, "Swift")
@@ -268,15 +271,15 @@ def main() -> int:
     if not real_packages:
         skipped.append("real jq/ffmpeg timing: pass --real-install jq --real-install ffmpeg or set PERF_REAL_INSTALLS=jq,ffmpeg")
     if not swift:
-        skipped.append("Rust-vs-Swift comparison: pass --swift-bin or set SWIFT_CREW_BIN")
-        skipped.append("Swift shim startup threshold: pass --swift-bin or set SWIFT_CREW_BIN")
+        skipped.append("Swift gates: pass --swift-bin or set SWIFT_CREW_BIN")
 
     by_key = {(item["scenario"], item["implementation"]): item for item in results}
     for item in results:
-        enforce_shim = item["implementation"] == "swift" or (swift and not rust)
-        if item["scenario"] == "shim_startup" and enforce_shim and item["mean_ms"] > args.shim_threshold_ms:
+        enforce_shim = item["implementation"] == "swift"
+        if item["scenario"] == "shim_startup" and enforce_shim and item["median_ms"] > args.shim_threshold_ms:
             failures.append(
-                f"{item['implementation']} shim startup mean {item['mean_ms']:.2f} ms exceeds {args.shim_threshold_ms:g} ms"
+                f"{item['implementation']} shim startup median {item['median_ms']:.2f} ms exceeds "
+                f"{args.shim_threshold_ms:g} ms"
             )
 
     if rust and swift:
@@ -286,11 +289,11 @@ def main() -> int:
             candidate = by_key.get((scenario, "swift"))
             if not baseline or not candidate:
                 continue
-            allowed = baseline["mean_ms"] * (1 + args.install_threshold_pct / 100)
-            if candidate["mean_ms"] > allowed:
+            allowed = baseline["median_ms"] * (1 + args.install_threshold_pct / 100)
+            if candidate["median_ms"] > allowed:
                 failures.append(
-                    f"{scenario} swift mean {candidate['mean_ms']:.2f} ms exceeds rust mean "
-                    f"{baseline['mean_ms']:.2f} ms + {args.install_threshold_pct:g}% ({allowed:.2f} ms)"
+                    f"{scenario} swift median {candidate['median_ms']:.2f} ms exceeds rust median "
+                    f"{baseline['median_ms']:.2f} ms + {args.install_threshold_pct:g}% ({allowed:.2f} ms)"
                 )
 
     report = render_report(args, results, skipped, failures, args.exception_reason)
@@ -309,6 +312,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except RuntimeError as error:
+    except (RuntimeError, subprocess.TimeoutExpired) as error:
         print(error, file=sys.stderr)
         raise SystemExit(1)

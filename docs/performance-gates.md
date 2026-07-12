@@ -20,7 +20,7 @@ Build the binaries first, then run:
 python3 harness/perf/crew_perf_gate.py \
   --rust-bin target/release/crew \
   --swift-bin swift/.build/release/crew \
-  --fixture-install-cmd 'cd harness/fixtures/install-basic && {crew} install --lock' \
+  --fixture-install-cmd '{crew} update && {crew} install hello' \
   --real-install jq \
   --real-install ffmpeg
 ```
@@ -33,12 +33,15 @@ The fixture command is a shell template. Supported placeholders:
 | `{home}` | isolated HOME for that sample |
 | `{tmp}` | isolated temp directory for that sample |
 
+The command is trusted developer/CI configuration and executes through the shell.
+CI points `COLDBREW_FORMULA_API_BASE` at the checked-in registry fixtures.
+
 ## Thresholds
 
 | Gate | Default |
 |---|---:|
-| Swift install time vs Rust | Swift mean must be within 10% of Rust mean |
-| Swift shim startup latency | Mean must be under 50 ms |
+| Swift install time vs Rust | Swift median must be within 10% of Rust median |
+| Swift shim startup latency | Median must be under 50 ms |
 | Timed iterations | 5 |
 | Warmups | 1 |
 
@@ -54,6 +57,9 @@ Environment overrides:
 | `PERF_INSTALL_THRESHOLD_PCT` | Rust-vs-Swift install budget |
 | `PERF_SHIM_STARTUP_MAX_MS` | Absolute shim startup budget |
 | `PERF_EXCEPTION_REASON` | Documented temporary exception; report still lists failures |
+
+Shim timing includes process launch and the `/bin/sh` shim itself because that is the
+user-visible startup path.
 
 ## Exception Path
 
