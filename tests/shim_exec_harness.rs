@@ -154,8 +154,7 @@ fn version_file_takes_precedence_over_global_default_and_latest() {
         .expect("decode fixture metadata");
         metadata["package"]["name"] = "multi".into();
         metadata["package"]["version"] = version.into();
-        metadata["package"]["cellar_path"] =
-            destination.to_string_lossy().to_string().into();
+        metadata["package"]["cellar_path"] = destination.to_string_lossy().to_string().into();
         std::fs::write(
             destination.join(".coldbrew.json"),
             serde_json::to_vec_pretty(&metadata).expect("encode fixture metadata"),
