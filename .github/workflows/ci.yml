@@ -200,12 +200,12 @@ jobs:
       SWIFT_STATIC_SDK_CHECKSUM: "87c3eaf908e67c0e13a84367119e12273cec1d2cd3d81f7d74bb36722d6b607b"
       SWIFT_STATIC_SDK_ID: "x86_64-swift-linux-musl"
       SWIFT_STATIC_CREW: "swift/.build/x86_64-swift-linux-musl/release/crew"
+      SQLITE_VERSION: "3.53.3"
+      SQLITE_AMALGAMATION: "sqlite-amalgamation-3530300.zip"
+      SQLITE_AMALGAMATION_SHA3_256: "d45c688a8cb23f68611a894a756a12d7eb6ab6e9e2468ca70adbeab3808b5ab9"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install SQLite development headers
-        run: sudo apt-get update && sudo apt-get install --yes libsqlite3-dev
 
       - name: Install authenticated Swift toolchain
         shell: bash
@@ -227,6 +227,35 @@ jobs:
           set -euo pipefail
           swift sdk install "$SWIFT_STATIC_SDK_URL" --checksum "$SWIFT_STATIC_SDK_CHECKSUM"
 
+      - name: Build musl SQLite for Static Linux SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -fsSLO "https://www.sqlite.org/2026/$SQLITE_AMALGAMATION"
+          checksum="$(openssl dgst -sha3-256 -r "$SQLITE_AMALGAMATION")"
+          test "${checksum%% *}" = "$SQLITE_AMALGAMATION_SHA3_256"
+          unzip -q "$SQLITE_AMALGAMATION"
+          sdk_root="$(find "$HOME/.swiftpm/swift-sdks" -type d -path '*/swift-linux-musl/musl-*.sdk/x86_64' -print -quit)"
+          test -n "$sdk_root"
+          prefix="$RUNNER_TEMP/sqlite-musl"
+          mkdir -p "$prefix/include" "$prefix/lib/pkgconfig"
+          "$RUNNER_TEMP/swift/usr/bin/clang" --target=x86_64-swift-linux-musl \
+            --sysroot="$sdk_root" -resource-dir="$sdk_root/usr/lib/swift/clang" \
+            -O2 -fPIC -c "${SQLITE_AMALGAMATION%.zip}/sqlite3.c" -o sqlite3.o
+          "$RUNNER_TEMP/swift/usr/bin/llvm-ar" rcs "$prefix/lib/libsqlite3.a" sqlite3.o
+          cp "${SQLITE_AMALGAMATION%.zip}/sqlite3.h" "${SQLITE_AMALGAMATION%.zip}/sqlite3ext.h" "$prefix/include/"
+          printf '%s\n' \
+            "prefix=$prefix" \
+            'libdir=${prefix}/lib' \
+            'includedir=${prefix}/include' \
+            '' \
+            'Name: sqlite3' \
+            'Description: SQL database engine' \
+            "Version: $SQLITE_VERSION" \
+            'Libs: -L${libdir} -lsqlite3 -ldl -lpthread' \
+            'Cflags: -I${includedir}' > "$prefix/lib/pkgconfig/sqlite3.pc"
+          echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig" >> "$GITHUB_ENV"
+
       - name: Test Swift package with Static Linux SDK
         working-directory: swift
         shell: bash
@@ -241,7 +270,7 @@ jobs:
         shell: bash
         run: |
           test -x "$SWIFT_STATIC_CREW"
-          file "$SWIFT_STATIC_CREW" | grep -q "x86-64"
+          file "$SWIFT_STATIC_CREW" | grep -Eq 'x86-64.*(statically linked|static-pie linked)'
           ! readelf -l "$SWIFT_STATIC_CREW" | grep -q INTERP
 
       - name: Install Rust for fixture harness
