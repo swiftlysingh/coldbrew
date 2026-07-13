@@ -54,7 +54,7 @@ pub fn unlink(paths: &Paths, name: &str, version: &str) -> Result<Vec<String>> {
     }
 
     // Remove shims
-    shim_manager.remove_shims(&binaries)?;
+    shim_manager.remove_shims(name, &binaries)?;
 
     Ok(binaries)
 }
