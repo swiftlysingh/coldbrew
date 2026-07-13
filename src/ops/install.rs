@@ -1100,8 +1100,14 @@ async fn install_single(
     let replacement_path = if existing_path.exists() {
         let mut suffix = 0u32;
         let backup = loop {
-            let candidate = existing_path.with_extension(format!("coldbrew-replace-{}-{}", std::process::id(), suffix));
-            if !candidate.exists() { break candidate; }
+            let candidate = existing_path.with_extension(format!(
+                "coldbrew-replace-{}-{}",
+                std::process::id(),
+                suffix
+            ));
+            if !candidate.exists() {
+                break candidate;
+            }
             suffix += 1;
         };
         fs::rename(&existing_path, &backup)?;
@@ -1112,10 +1118,20 @@ async fn install_single(
 
     let materialize_start = Instant::now();
     ctx.output.debug("Materializing to cellar...");
-    let install_path = match ctx.store.materialize(&bottle_plan.file.sha256, name, version) {
+    let install_path = match ctx
+        .store
+        .materialize(&bottle_plan.file.sha256, name, version)
+    {
         Ok(path) => path,
         Err(err) => {
-            rollback_replacement(ctx, name, version, replacement_path.as_deref(), old_sha.as_deref(), None);
+            rollback_replacement(
+                ctx,
+                name,
+                version,
+                replacement_path.as_deref(),
+                old_sha.as_deref(),
+                None,
+            );
             return Err(err);
         }
     };
@@ -1130,21 +1146,43 @@ async fn install_single(
     let conn = match db.connect() {
         Ok(conn) => conn,
         Err(err) => {
-            rollback_replacement(ctx, name, version, replacement_path.as_deref(), old_sha.as_deref(), Some(&bottle_plan.file.sha256));
+            rollback_replacement(
+                ctx,
+                name,
+                version,
+                replacement_path.as_deref(),
+                old_sha.as_deref(),
+                Some(&bottle_plan.file.sha256),
+            );
             return Err(err);
         }
     };
     let store_size = match ctx.store.entry_size(&bottle_plan.file.sha256) {
         Ok(size) => size,
         Err(err) => {
-            rollback_replacement(ctx, name, version, replacement_path.as_deref(), old_sha.as_deref(), Some(&bottle_plan.file.sha256));
+            rollback_replacement(
+                ctx,
+                name,
+                version,
+                replacement_path.as_deref(),
+                old_sha.as_deref(),
+                Some(&bottle_plan.file.sha256),
+            );
             return Err(err);
         }
     };
-    if let Err(err) = db.upsert_store_entry(&conn, &bottle_plan.file.sha256, store_size)
+    if let Err(err) = db
+        .upsert_store_entry(&conn, &bottle_plan.file.sha256, store_size)
         .and_then(|_| db.add_store_ref(&conn, &bottle_plan.file.sha256, name, version))
     {
-        rollback_replacement(ctx, name, version, replacement_path.as_deref(), old_sha.as_deref(), Some(&bottle_plan.file.sha256));
+        rollback_replacement(
+            ctx,
+            name,
+            version,
+            replacement_path.as_deref(),
+            old_sha.as_deref(),
+            Some(&bottle_plan.file.sha256),
+        );
         return Err(err);
     }
 
@@ -1155,7 +1193,14 @@ async fn install_single(
             match relocate::relocate_bottle(&install_path, ctx.paths, ctx.platform, ctx.output) {
                 Ok(summary) => summary,
                 Err(err) => {
-                    rollback_replacement(ctx, name, version, replacement_path.as_deref(), old_sha.as_deref(), Some(&bottle_plan.file.sha256));
+                    rollback_replacement(
+                        ctx,
+                        name,
+                        version,
+                        replacement_path.as_deref(),
+                        old_sha.as_deref(),
+                        Some(&bottle_plan.file.sha256),
+                    );
                     return Err(err);
                 }
             };
@@ -1167,22 +1212,32 @@ async fn install_single(
             ));
             ctx.output.debug("Codesigning Mach-O files...");
             let codesign_start = Instant::now();
-            let _permit = match ctx
-                .codesign_semaphore
-                .clone()
-                .acquire_owned()
-                .await
-            {
+            let _permit = match ctx.codesign_semaphore.clone().acquire_owned().await {
                 Ok(permit) => permit,
                 Err(err) => {
-                    let err = ColdbrewError::Other(format!("Failed to acquire codesign slot: {}", err));
-                    rollback_replacement(ctx, name, version, replacement_path.as_deref(), old_sha.as_deref(), Some(&bottle_plan.file.sha256));
+                    let err =
+                        ColdbrewError::Other(format!("Failed to acquire codesign slot: {}", err));
+                    rollback_replacement(
+                        ctx,
+                        name,
+                        version,
+                        replacement_path.as_deref(),
+                        old_sha.as_deref(),
+                        Some(&bottle_plan.file.sha256),
+                    );
                     return Err(err);
                 }
             };
             if let Err(err) = relocate::codesign_macho_tree(&install_path, ctx.platform, ctx.output)
             {
-                rollback_replacement(ctx, name, version, replacement_path.as_deref(), old_sha.as_deref(), Some(&bottle_plan.file.sha256));
+                rollback_replacement(
+                    ctx,
+                    name,
+                    version,
+                    replacement_path.as_deref(),
+                    old_sha.as_deref(),
+                    Some(&bottle_plan.file.sha256),
+                );
                 return Err(err);
             }
             codesign_duration = codesign_start.elapsed();
@@ -1208,7 +1263,14 @@ async fn install_single(
     let binaries = match ctx.cellar.get_binaries(name, version) {
         Ok(binaries) => binaries,
         Err(err) => {
-            rollback_replacement(ctx, name, version, replacement_path.as_deref(), old_sha.as_deref(), Some(&bottle_plan.file.sha256));
+            rollback_replacement(
+                ctx,
+                name,
+                version,
+                replacement_path.as_deref(),
+                old_sha.as_deref(),
+                Some(&bottle_plan.file.sha256),
+            );
             return Err(err);
         }
     };
@@ -1218,21 +1280,48 @@ async fn install_single(
         ctx.output
             .debug(&format!("Creating shims for {} binaries", binaries.len()));
         if let Err(err) = ctx.shim_manager.create_shims(name, version, &binaries) {
-            rollback_replacement(ctx, name, version, replacement_path.as_deref(), old_sha.as_deref(), Some(&bottle_plan.file.sha256));
+            rollback_replacement(
+                ctx,
+                name,
+                version,
+                replacement_path.as_deref(),
+                old_sha.as_deref(),
+                Some(&bottle_plan.file.sha256),
+            );
             return Err(err);
         }
         installed.linked = true;
     }
 
     let metadata = PackageMetadata::new(installed.clone(), bottle_plan.file.url.clone());
-    if let Err(err) = ctx.cellar.save_metadata(&metadata).and_then(|_| ctx.cellar.update_opt_link(name)) {
-        rollback_replacement(ctx, name, version, replacement_path.as_deref(), old_sha.as_deref(), Some(&bottle_plan.file.sha256));
+    if let Err(err) = ctx
+        .cellar
+        .save_metadata(&metadata)
+        .and_then(|_| ctx.cellar.update_opt_link(name))
+    {
+        rollback_replacement(
+            ctx,
+            name,
+            version,
+            replacement_path.as_deref(),
+            old_sha.as_deref(),
+            Some(&bottle_plan.file.sha256),
+        );
         return Err(err);
     }
-    if let (Some(old_sha), Some(new_sha)) = (old_sha.as_deref(), Some(bottle_plan.file.sha256.as_str())) {
+    if let (Some(old_sha), Some(new_sha)) =
+        (old_sha.as_deref(), Some(bottle_plan.file.sha256.as_str()))
+    {
         if old_sha != new_sha {
             if let Err(err) = db.remove_store_ref(&conn, old_sha, name, version) {
-                rollback_replacement(ctx, name, version, replacement_path.as_deref(), Some(old_sha), Some(&bottle_plan.file.sha256));
+                rollback_replacement(
+                    ctx,
+                    name,
+                    version,
+                    replacement_path.as_deref(),
+                    Some(old_sha),
+                    Some(&bottle_plan.file.sha256),
+                );
                 return Err(err);
             }
         }
@@ -1248,7 +1337,11 @@ async fn install_single(
             }
         }
         if let Err(err) = fs::remove_dir_all(&backup) {
-            ctx.output.debug(&format!("Failed to remove replacement backup {}: {}", backup.display(), err));
+            ctx.output.debug(&format!(
+                "Failed to remove replacement backup {}: {}",
+                backup.display(),
+                err
+            ));
         }
     }
 
@@ -1294,7 +1387,8 @@ fn rollback_replacement(
     }
     if let Some(backup) = backup {
         if let Err(err) = fs::rename(backup, &current) {
-            ctx.output.debug(&format!("Failed to restore {} {}: {}", name, version, err));
+            ctx.output
+                .debug(&format!("Failed to restore {} {}: {}", name, version, err));
         }
     }
     if let Some(old_sha) = old_sha {

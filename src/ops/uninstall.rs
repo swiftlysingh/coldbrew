@@ -134,19 +134,31 @@ pub fn find_orphan_dependencies(
             .filter(|pkg| pkg.installed_as_dependency)
             .filter(|pkg| candidates.contains(&(pkg.name.clone(), pkg.version.clone())))
             .filter(|pkg| !excluded.contains(&(pkg.name.clone(), pkg.version.clone())))
-            .filter(|pkg| !installed.iter().any(|other| {
-                !excluded.contains(&(other.name.clone(), other.version.clone()))
-                    && (other.name != pkg.name || other.version != pkg.version)
-                    && other.runtime_dependencies.iter().any(|dep| {
-                        dep.name == pkg.name && dep.version == pkg.version
-                    })
-            }))
+            .filter(|pkg| {
+                !installed.iter().any(|other| {
+                    !excluded.contains(&(other.name.clone(), other.version.clone()))
+                        && (other.name != pkg.name || other.version != pkg.version)
+                        && other
+                            .runtime_dependencies
+                            .iter()
+                            .any(|dep| dep.name == pkg.name && dep.version == pkg.version)
+                })
+            })
             .map(|pkg| (pkg.name.clone(), pkg.version.clone()))
             .collect();
-        if new_orphans.is_empty() { break; }
+        if new_orphans.is_empty() {
+            break;
+        }
         for orphan in &new_orphans {
-            if let Some(pkg) = installed.iter().find(|pkg| (pkg.name.clone(), pkg.version.clone()) == *orphan) {
-                candidates.extend(pkg.runtime_dependencies.iter().map(|dep| (dep.name.clone(), dep.version.clone())));
+            if let Some(pkg) = installed
+                .iter()
+                .find(|pkg| (pkg.name.clone(), pkg.version.clone()) == *orphan)
+            {
+                candidates.extend(
+                    pkg.runtime_dependencies
+                        .iter()
+                        .map(|dep| (dep.name.clone(), dep.version.clone())),
+                );
             }
         }
         excluded.extend(new_orphans);
