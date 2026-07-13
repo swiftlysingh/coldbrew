@@ -2,21 +2,22 @@ name: CI
 
 on:
   push:
+    branches: [main, swift-main]
+  pull_request:
+    branches: [main, swift-main]
 
 jobs:
   test:
     name: Test (${{ matrix.name }})
-    runs-on: ${{ matrix.self_hosted }}
+    runs-on: ${{ matrix.github }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: ubuntu
             github: ubuntu-latest
-            self_hosted: [self-hosted, Linux, X64]
           - name: macos
             github: macos-latest
-            self_hosted: [self-hosted, macOS, ARM64]
 
     steps:
       - name: Checkout
@@ -26,6 +27,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      - name: Install components for pinned toolchain
+        run: rustup component add rustfmt clippy
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -38,3 +42,247 @@ jobs:
 
       - name: Test
         run: cargo test
+
+  harness-rust:
+    name: Executable harness (Rust)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Rust executable
+        run: cargo build --bin crew
+
+      - name: Test Rust executable harness
+        env:
+          CREW_BIN: ${{ github.workspace }}/target/debug/crew
+        run: |
+          cargo test --test integration --test cli_contract --test registry_config_harness --test operational_workflows_harness
+          cargo test --test install_lifecycle_harness --test shim_exec_harness -- --ignored
+
+  harness-swift:
+    name: Executable harness (Swift)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Swift executable
+        run: swift build --package-path swift
+
+      - name: Test Swift executable harness
+        env:
+          CREW_BIN: ${{ github.workspace }}/swift/.build/debug/crew
+        run: |
+          cargo test --test integration --test cli_contract --test registry_config_harness --test operational_workflows_harness
+          cargo test --test install_lifecycle_harness --test shim_exec_harness -- --ignored
+
+  harness-cross-binary:
+    name: Executable harness (Rust + Swift)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build executables
+        run: |
+          cargo build --bin crew
+          swift build --package-path swift
+
+      - name: Test cross-binary harness
+        env:
+          RUST_CREW_BIN: ${{ github.workspace }}/target/debug/crew
+          SWIFT_CREW_BIN: ${{ github.workspace }}/swift/.build/debug/crew
+        run: cargo test --test cross_binary_harness -- --ignored
+
+  smoke-swift-real:
+    name: Real installs (Swift, jq + ffmpeg)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Swift executable
+        run: swift build --package-path swift
+
+      - name: Install and execute real packages
+        env:
+          COLDBREW_HOME: ${{ runner.temp }}/coldbrew-real-smoke
+        run: |
+          set -euo pipefail
+          crew="$GITHUB_WORKSPACE/swift/.build/debug/crew"
+          "$crew" update
+          "$crew" install jq
+          "$crew" exec jq jq -- --version
+          "$crew" install ffmpeg
+          "$crew" exec ffmpeg ffmpeg -- -version
+
+  swift:
+    name: Swift (${{ matrix.name }})
+    runs-on: ${{ matrix.runs_on }}
+    continue-on-error: ${{ matrix.allow_failure }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            runs_on: macos-latest
+            allow_failure: false
+          - name: linux
+            runs_on: ubuntu-latest
+            allow_failure: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Swift package
+        id: swift-package
+        shell: bash
+        run: |
+          if [ -f swift/Package.swift ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check Swift toolchain
+        id: swift-toolchain
+        if: steps.swift-package.outputs.present == 'true'
+        shell: bash
+        run: |
+          if command -v swift >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Swift toolchain not available on this runner; PR024 owns the required Linux Static SDK gate"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install SQLite development headers
+        if: matrix.name == 'linux' && steps.swift-package.outputs.present == 'true' && steps.swift-toolchain.outputs.present == 'true'
+        run: sudo apt-get update && sudo apt-get install --yes libsqlite3-dev
+
+      - name: Build
+        if: steps.swift-package.outputs.present == 'true' && steps.swift-toolchain.outputs.present == 'true'
+        working-directory: swift
+        run: swift build
+
+      - name: Test
+        if: steps.swift-package.outputs.present == 'true' && steps.swift-toolchain.outputs.present == 'true'
+        working-directory: swift
+        run: swift test
+
+  swift-linux-static-sdk:
+    name: Swift Linux static SDK (x86_64 musl)
+    runs-on: ubuntu-latest
+    env:
+      SWIFT_VERSION: "6.3.3"
+      SWIFT_TOOLCHAIN_URL: "https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz"
+      SWIFT_STATIC_SDK_URL: "https://download.swift.org/swift-6.3.3-release/static-sdk/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE_static-linux-0.1.0.artifactbundle.tar.gz"
+      SWIFT_STATIC_SDK_CHECKSUM: "87c3eaf908e67c0e13a84367119e12273cec1d2cd3d81f7d74bb36722d6b607b"
+      SWIFT_STATIC_SDK_ID: "x86_64-swift-linux-musl"
+      SWIFT_SDKS_DIR: "${{ github.workspace }}/.swift-sdks"
+      SWIFT_STATIC_CREW: "swift/.build/x86_64-swift-linux-musl/release/crew"
+      SQLITE_VERSION: "3.53.3"
+      SQLITE_AMALGAMATION: "sqlite-amalgamation-3530300.zip"
+      SQLITE_AMALGAMATION_SHA3_256: "d45c688a8cb23f68611a894a756a12d7eb6ab6e9e2468ca70adbeab3808b5ab9"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install authenticated Swift toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="${SWIFT_TOOLCHAIN_URL##*/}"
+          curl --proto '=https' --tlsv1.2 -fsSLO "$SWIFT_TOOLCHAIN_URL"
+          curl --proto '=https' --tlsv1.2 -fsSLO "$SWIFT_TOOLCHAIN_URL.sig"
+          curl --compressed --proto '=https' --tlsv1.2 -fsSL https://www.swift.org/keys/all-keys.asc | gpg --batch --import
+          gpg --batch --verify "$archive.sig" "$archive"
+          mkdir -p "$RUNNER_TEMP/swift"
+          tar -xzf "$archive" --strip-components=1 -C "$RUNNER_TEMP/swift"
+          echo "$RUNNER_TEMP/swift/usr/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/swift/usr/bin/swift" --version | grep -F "Swift version $SWIFT_VERSION"
+
+      - name: Install Static Linux SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift sdk install "$SWIFT_STATIC_SDK_URL" \
+            --checksum "$SWIFT_STATIC_SDK_CHECKSUM" \
+            --swift-sdks-path "$SWIFT_SDKS_DIR"
+
+      - name: Build musl SQLite for Static Linux SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --proto '=https' --tlsv1.2 -fsSLO "https://www.sqlite.org/2026/$SQLITE_AMALGAMATION"
+          checksum="$(openssl dgst -sha3-256 -r "$SQLITE_AMALGAMATION")"
+          test "${checksum%% *}" = "$SQLITE_AMALGAMATION_SHA3_256"
+          unzip -q "$SQLITE_AMALGAMATION"
+          sdk_root="$(find "$SWIFT_SDKS_DIR" -type d -path '*/swift-linux-musl/musl-*.sdk/x86_64' -print -quit)"
+          test -n "$sdk_root"
+          prefix="$RUNNER_TEMP/sqlite-musl"
+          mkdir -p "$prefix/include" "$prefix/lib/pkgconfig"
+          "$RUNNER_TEMP/swift/usr/bin/clang" --target=x86_64-swift-linux-musl \
+            --sysroot="$sdk_root" -resource-dir="$sdk_root/usr/lib/swift/clang" \
+            -O2 -fPIC -c "${SQLITE_AMALGAMATION%.zip}/sqlite3.c" -o sqlite3.o
+          "$RUNNER_TEMP/swift/usr/bin/llvm-ar" rcs "$prefix/lib/libsqlite3.a" sqlite3.o
+          cp "${SQLITE_AMALGAMATION%.zip}/sqlite3.h" "${SQLITE_AMALGAMATION%.zip}/sqlite3ext.h" "$prefix/include/"
+          printf '%s\n' \
+            "prefix=$prefix" \
+            'libdir=${prefix}/lib' \
+            'includedir=${prefix}/include' \
+            '' \
+            'Name: sqlite3' \
+            'Description: SQL database engine' \
+            "Version: $SQLITE_VERSION" \
+            'Libs: -L${libdir} -lsqlite3 -ldl -lpthread' \
+            'Cflags: -I${includedir}' > "$prefix/lib/pkgconfig/sqlite3.pc"
+          echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig" >> "$GITHUB_ENV"
+
+      - name: Test Swift package with Static Linux SDK
+        working-directory: swift
+        shell: bash
+        run: swift test --swift-sdk "$SWIFT_STATIC_SDK_ID" --swift-sdks-path "$SWIFT_SDKS_DIR"
+
+      - name: Build crew with Static Linux SDK
+        working-directory: swift
+        shell: bash
+        run: swift build -c release --swift-sdk "$SWIFT_STATIC_SDK_ID" --swift-sdks-path "$SWIFT_SDKS_DIR" --product crew
+
+      - name: Verify static Linux crew binary
+        shell: bash
+        run: |
+          test -x "$SWIFT_STATIC_CREW"
+          file "$SWIFT_STATIC_CREW" | grep -Eq 'x86-64.*(statically linked|static-pie linked)'
+          ! readelf -l "$SWIFT_STATIC_CREW" | grep -q INTERP
+
+      - name: Install Rust for fixture harness
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Fixture harness against static Swift crew
+        shell: bash
+        run: |
+          cargo build --bin crew
+          CREW_BIN="$PWD/$SWIFT_STATIC_CREW" cargo test --tests
+          CREW_BIN="$PWD/$SWIFT_STATIC_CREW" cargo test --test install_lifecycle_harness --test shim_exec_harness -- --ignored
+          RUST_CREW_BIN="$PWD/target/debug/crew" SWIFT_CREW_BIN="$PWD/$SWIFT_STATIC_CREW" cargo test --test cross_binary_harness -- --ignored
