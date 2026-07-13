@@ -1,6 +1,11 @@
 import ArgumentParser
 import ColdbrewKit
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
 
 enum CrewCompletionShell: String, ExpressibleByArgument {
     case bash
@@ -576,41 +581,56 @@ struct Exec: ParsableCommand {
     var args: [String] = []
 
     func run() throws {
-        let paths = try Paths()
-        let config = try GlobalConfig.load(from: paths.configFile)
-        let versionFiles = try getVersionMap(
-            startDirectory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-        )
-        let binaryURL = try ShimManager(paths: paths).resolveBinary(
-            package: package,
-            binary: binary,
-            defaults: config.defaults,
-            projectVersions: versionFiles
-        )
-        let process = Process()
-        process.executableURL = binaryURL
-        let version = binaryURL.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent
-        let installed = try Cellar(paths: paths).package(name: package, version: version)
-        var libraryPaths = installed.runtimeDependencies
-            .map { URL(fileURLWithPath: $0.path).appendingPathComponent("lib").path }
-            .filter { FileManager.default.fileExists(atPath: $0) }
-        if !libraryPaths.isEmpty {
-            var environment = ProcessInfo.processInfo.environment
-            if let existing = environment["DYLD_LIBRARY_PATH"], !existing.isEmpty {
-                libraryPaths.append(existing)
-            }
-            environment["DYLD_LIBRARY_PATH"] = libraryPaths.joined(separator: ":")
-            process.environment = environment
-        }
-        var forwardedArgs = args
-        if forwardedArgs.first == "--" {
-            forwardedArgs.removeFirst()
-        }
-        process.arguments = forwardedArgs
-        try process.run()
-        process.waitUntilExit()
-        throw ExitCode(process.terminationStatus)
+        try execute(package: package, binary: binary, arguments: args)
     }
+}
+
+private func execute(package: String, binary: String, arguments: [String]) throws {
+    let paths = try Paths()
+    let config = try GlobalConfig.load(from: paths.configFile)
+    let versionFiles = try getVersionMap(
+        startDirectory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+    )
+    let binaryURL = try ShimManager(paths: paths).resolveBinary(
+        package: package,
+        binary: binary,
+        defaults: config.defaults,
+        projectVersions: versionFiles
+    )
+    let version = binaryURL.deletingLastPathComponent().deletingLastPathComponent().lastPathComponent
+    let installed = try Cellar(paths: paths).package(name: package, version: version)
+    var libraryPaths = installed.runtimeDependencies
+        .map { URL(fileURLWithPath: $0.path).appendingPathComponent("lib").path }
+        .filter { FileManager.default.fileExists(atPath: $0) }
+    var environment: [String: String]?
+    if !libraryPaths.isEmpty {
+        var updatedEnvironment = ProcessInfo.processInfo.environment
+        if let existing = updatedEnvironment["DYLD_LIBRARY_PATH"], !existing.isEmpty {
+            libraryPaths.append(existing)
+        }
+        updatedEnvironment["DYLD_LIBRARY_PATH"] = libraryPaths.joined(separator: ":")
+        environment = updatedEnvironment
+    }
+    var forwardedArgs = arguments
+    if forwardedArgs.first == "--" {
+        forwardedArgs.removeFirst()
+    }
+    try replaceProcess(executable: binaryURL, arguments: forwardedArgs, environment: environment)
+}
+
+private func replaceProcess(executable: URL, arguments: [String], environment: [String: String]?) throws {
+    if let environment {
+        for (key, value) in environment {
+            setenv(key, value, 1)
+        }
+    }
+
+    let path = executable.path
+    var argv: [UnsafeMutablePointer<CChar>?] = ([path] + arguments).map { strdup($0) }
+    argv.append(nil)
+    defer { argv.forEach { free($0) } }
+    execvp(path, &argv)
+    throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
 }
 
 private func installRequests(for packages: [String], paths: Paths, includeDependencies: Bool) throws -> [InstallRequest] {

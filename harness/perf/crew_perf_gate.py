@@ -203,6 +203,16 @@ def render_report(args, results: list[dict], skipped: list[str], failures: list[
     return "\n".join(lines) + "\n"
 
 
+def write_results(args, results: list[dict], skipped: list[str], failures: list[str]) -> None:
+    report = render_report(args, results, skipped, failures, args.exception_reason)
+    args.report.parent.mkdir(parents=True, exist_ok=True)
+    args.report.write_text(report)
+    if args.json_path:
+        args.json_path.parent.mkdir(parents=True, exist_ok=True)
+        args.json_path.write_text(json.dumps({"results": results, "skipped": skipped, "failures": failures}, indent=2))
+    print(report)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run Coldbrew performance gates.")
     parser.add_argument("--rust-bin", default=os.environ.get("RUST_CREW_BIN"))
@@ -239,32 +249,36 @@ def main() -> int:
     skipped: list[str] = []
     failures: list[str] = []
 
-    for label, binary in binaries:
-        result = sample("shim_startup", args.iterations, args.warmups, lambda b=binary: shim_startup(b, args.timeout))
-        result["implementation"] = label
-        results.append(result)
-
-        if args.fixture_install_cmd:
-            result = sample(
-                "fixture_install",
-                args.iterations,
-                args.warmups,
-                lambda b=binary: fixture_install(b, args.fixture_install_cmd, args.timeout),
-            )
+    try:
+        for label, binary in binaries:
+            result = sample("shim_startup", args.iterations, args.warmups, lambda b=binary: shim_startup(b, args.timeout))
             result["implementation"] = label
             results.append(result)
 
-        for package in real_packages:
-            modes = ["cold", "warm"] if args.real_mode == "both" else [args.real_mode]
-            for mode in modes:
+            if args.fixture_install_cmd:
                 result = sample(
-                    f"real_install_{mode}:{package}",
+                    "fixture_install",
                     args.iterations,
                     args.warmups,
-                    lambda b=binary, p=package, m=mode: real_install(b, p, m == "warm", args.timeout),
+                    lambda b=binary: fixture_install(b, args.fixture_install_cmd, args.timeout),
                 )
                 result["implementation"] = label
                 results.append(result)
+            for package in real_packages:
+                modes = ["cold", "warm"] if args.real_mode == "both" else [args.real_mode]
+                for mode in modes:
+                    result = sample(
+                        f"real_install_{mode}:{package}",
+                        args.iterations,
+                        args.warmups,
+                        lambda b=binary, p=package, m=mode: real_install(b, p, m == "warm", args.timeout),
+                    )
+                    result["implementation"] = label
+                    results.append(result)
+    except (RuntimeError, subprocess.TimeoutExpired) as error:
+        failures.append(str(error))
+        write_results(args, results, skipped, failures)
+        return 1
 
     if not args.fixture_install_cmd:
         skipped.append("fixture install timing: set PERF_FIXTURE_INSTALL_CMD with {crew}, {home}, and {tmp} placeholders")
@@ -296,14 +310,7 @@ def main() -> int:
                     f"{baseline['median_ms']:.2f} ms + {args.install_threshold_pct:g}% ({allowed:.2f} ms)"
                 )
 
-    report = render_report(args, results, skipped, failures, args.exception_reason)
-    args.report.parent.mkdir(parents=True, exist_ok=True)
-    args.report.write_text(report)
-    if args.json_path:
-        args.json_path.parent.mkdir(parents=True, exist_ok=True)
-        args.json_path.write_text(json.dumps({"results": results, "skipped": skipped, "failures": failures}, indent=2))
-
-    print(report)
+    write_results(args, results, skipped, failures)
     if failures and not args.exception_reason:
         return 1
     return 0
