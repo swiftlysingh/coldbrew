@@ -214,7 +214,10 @@ mod tests {
             package("dep", true, &[("nested", "1.0")]),
             package("nested", true, &[]),
         ];
-        assert_eq!(find_orphan_dependencies(&installed, &removed("app")), vec![("dep".into(), "1.0".into()), ("nested".into(), "1.0".into())]);
+        assert_eq!(
+            find_orphan_dependencies(&installed, &removed("app")),
+            vec![("dep".into(), "1.0".into()), ("nested".into(), "1.0".into())]
+        );
     }
 
     #[test]
@@ -243,6 +246,9 @@ mod tests {
             package("dep", true, &[]),
             package("old-orphan", true, &[]),
         ];
-        assert_eq!(find_orphan_dependencies(&installed, &removed("app")), vec![("dep".into(), "1.0".into())]);
+        assert_eq!(
+            find_orphan_dependencies(&installed, &removed("app")),
+            vec![("dep".into(), "1.0".into())]
+        );
     }
 }
