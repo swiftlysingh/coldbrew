@@ -23,6 +23,9 @@ def main():
     except json.JSONDecodeError as error:
         fail(f"invalid JSON: {error}")
 
+    if not isinstance(data, dict):
+        fail("cutover metadata must be an object")
+
     if data.get("schemaVersion") != 1:
         fail("schemaVersion must be 1")
     if data.get("targetBranch") != "swift-main":
