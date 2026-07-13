@@ -28,9 +28,6 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Install components for pinned toolchain
-        run: rustup component add rustfmt clippy
-
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
