@@ -185,3 +185,69 @@ jobs:
         if: steps.swift-package.outputs.present == 'true' && steps.swift-toolchain.outputs.present == 'true'
         working-directory: swift
         run: swift test
+
+  swift-linux-static-sdk:
+    name: Swift Linux static SDK (x86_64 musl)
+    runs-on: ubuntu-latest
+    env:
+      SWIFT_VERSION: "6.3.3"
+      SWIFT_TOOLCHAIN_URL: "https://download.swift.org/swift-6.3.3-release/ubuntu2404/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE-ubuntu24.04.tar.gz"
+      SWIFT_STATIC_SDK_URL: "https://download.swift.org/swift-6.3.3-release/static-sdk/swift-6.3.3-RELEASE/swift-6.3.3-RELEASE_static-linux-0.1.0.artifactbundle.tar.gz"
+      SWIFT_STATIC_SDK_CHECKSUM: "87c3eaf908e67c0e13a84367119e12273cec1d2cd3d81f7d74bb36722d6b607b"
+      SWIFT_STATIC_SDK_ID: "x86_64-swift-linux-musl"
+      SWIFT_STATIC_CREW: "swift/.build/x86_64-swift-linux-musl/release/crew"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install SQLite development headers
+        run: sudo apt-get update && sudo apt-get install --yes libsqlite3-dev
+
+      - name: Install authenticated Swift toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="${SWIFT_TOOLCHAIN_URL##*/}"
+          curl --proto '=https' --tlsv1.2 -fsSLO "$SWIFT_TOOLCHAIN_URL"
+          curl --proto '=https' --tlsv1.2 -fsSLO "$SWIFT_TOOLCHAIN_URL.sig"
+          curl --proto '=https' --tlsv1.2 -fsSL https://www.swift.org/keys/all-keys.asc | gpg --batch --import
+          gpg --batch --verify "$archive.sig" "$archive"
+          mkdir -p "$RUNNER_TEMP/swift"
+          tar -xzf "$archive" --strip-components=1 -C "$RUNNER_TEMP/swift"
+          echo "$RUNNER_TEMP/swift/usr/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/swift/usr/bin/swift" --version | grep -F "Swift version $SWIFT_VERSION"
+
+      - name: Install Static Linux SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift sdk install "$SWIFT_STATIC_SDK_URL" --checksum "$SWIFT_STATIC_SDK_CHECKSUM"
+          swift sdk list | grep -F "$SWIFT_STATIC_SDK_ID"
+
+      - name: Test Swift package with Static Linux SDK
+        working-directory: swift
+        shell: bash
+        run: swift test --swift-sdk "$SWIFT_STATIC_SDK_ID"
+
+      - name: Build crew with Static Linux SDK
+        working-directory: swift
+        shell: bash
+        run: swift build -c release --swift-sdk "$SWIFT_STATIC_SDK_ID" --product crew
+
+      - name: Verify static Linux crew binary
+        shell: bash
+        run: |
+          test -x "$SWIFT_STATIC_CREW"
+          file "$SWIFT_STATIC_CREW" | grep -q "x86-64"
+          ! readelf -l "$SWIFT_STATIC_CREW" | grep -q INTERP
+
+      - name: Install Rust for fixture harness
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Fixture harness against static Swift crew
+        shell: bash
+        run: |
+          cargo build --bin crew
+          CREW_BIN="$PWD/$SWIFT_STATIC_CREW" cargo test --tests
+          CREW_BIN="$PWD/$SWIFT_STATIC_CREW" cargo test --test install_lifecycle_harness --test shim_exec_harness -- --ignored
+          RUST_CREW_BIN="$PWD/target/debug/crew" SWIFT_CREW_BIN="$PWD/$SWIFT_STATIC_CREW" cargo test --test cross_binary_harness -- --ignored
