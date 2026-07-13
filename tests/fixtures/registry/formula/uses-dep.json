@@ -1,0 +1,32 @@
+{
+  "name": "uses-dep",
+  "full_name": "homebrew/core/uses-dep",
+  "tap": "homebrew/core",
+  "desc": "Fixture package with one runtime dependency",
+  "homepage": "https://example.test/uses-dep",
+  "license": "MIT",
+  "versions": { "stable": "1.0.0", "bottle": true },
+  "bottle": {
+    "stable": {
+      "root_url": "http://127.0.0.1:0/bottles",
+      "files": {
+        "arm64_sonoma": {
+          "cellar": ":any_skip_relocation",
+          "url": "http://127.0.0.1:0/bottles/uses-dep-1.0.0.arm64_sonoma.bottle.tar.gz",
+          "sha256": "1d0fffd47aaaa2059b642fcf8376f639d75b238c18b6457c758ce50b2da6dd6b"
+        },
+        "sonoma": {
+          "cellar": ":any_skip_relocation",
+          "url": "http://127.0.0.1:0/bottles/uses-dep-1.0.0.sonoma.bottle.tar.gz",
+          "sha256": "6cf0eaebebbc6f4aa645001ee3480cab677847e7299466e6d5ee2a462d3ca7bc"
+        },
+        "all": {
+          "cellar": ":any_skip_relocation",
+          "url": "http://127.0.0.1:0/bottles/uses-dep-1.0.0.all.bottle.tar.gz",
+          "sha256": "14b612d0c2e42cfa75863465698564ba13db8d9505d9ea188c297e5f0e7e6702"
+        }
+      }
+    }
+  },
+  "dependencies": ["dep"]
+}

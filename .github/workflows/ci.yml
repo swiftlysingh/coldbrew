@@ -2,21 +2,22 @@ name: CI
 
 on:
   push:
+    branches: [main, swift-main]
+  pull_request:
+    branches: [main, swift-main]
 
 jobs:
   test:
     name: Test (${{ matrix.name }})
-    runs-on: ${{ matrix.self_hosted }}
+    runs-on: ${{ matrix.github }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: ubuntu
             github: ubuntu-latest
-            self_hosted: [self-hosted, Linux, X64]
           - name: macos
             github: macos-latest
-            self_hosted: [self-hosted, macOS, ARM64]
 
     steps:
       - name: Checkout
@@ -26,6 +27,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      - name: Install components for pinned toolchain
+        run: rustup component add rustfmt clippy
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -38,3 +42,146 @@ jobs:
 
       - name: Test
         run: cargo test
+
+  harness-rust:
+    name: Executable harness (Rust)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Rust executable
+        run: cargo build --bin crew
+
+      - name: Test Rust executable harness
+        env:
+          CREW_BIN: ${{ github.workspace }}/target/debug/crew
+        run: |
+          cargo test --test integration --test cli_contract --test registry_config_harness --test operational_workflows_harness
+          cargo test --test install_lifecycle_harness --test shim_exec_harness -- --ignored
+
+  harness-swift:
+    name: Executable harness (Swift)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Swift executable
+        run: swift build --package-path swift
+
+      - name: Test Swift executable harness
+        env:
+          CREW_BIN: ${{ github.workspace }}/swift/.build/debug/crew
+        run: |
+          cargo test --test integration --test cli_contract --test registry_config_harness --test operational_workflows_harness
+          cargo test --test install_lifecycle_harness --test shim_exec_harness -- --ignored
+
+  harness-cross-binary:
+    name: Executable harness (Rust + Swift)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build executables
+        run: |
+          cargo build --bin crew
+          swift build --package-path swift
+
+      - name: Test cross-binary harness
+        env:
+          RUST_CREW_BIN: ${{ github.workspace }}/target/debug/crew
+          SWIFT_CREW_BIN: ${{ github.workspace }}/swift/.build/debug/crew
+        run: cargo test --test cross_binary_harness -- --ignored
+
+  smoke-swift-real:
+    name: Real installs (Swift, jq + ffmpeg)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Swift executable
+        run: swift build --package-path swift
+
+      - name: Install and execute real packages
+        env:
+          COLDBREW_HOME: ${{ runner.temp }}/coldbrew-real-smoke
+        run: |
+          set -euo pipefail
+          crew="$GITHUB_WORKSPACE/swift/.build/debug/crew"
+          "$crew" update
+          "$crew" install jq
+          "$crew" exec jq jq -- --version
+          "$crew" install ffmpeg
+          "$crew" exec ffmpeg ffmpeg -- -version
+
+  swift:
+    name: Swift (${{ matrix.name }})
+    runs-on: ${{ matrix.runs_on }}
+    continue-on-error: ${{ matrix.allow_failure }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            runs_on: macos-latest
+            allow_failure: false
+          - name: linux
+            runs_on: ubuntu-latest
+            allow_failure: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Swift package
+        id: swift-package
+        shell: bash
+        run: |
+          if [ -f swift/Package.swift ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check Swift toolchain
+        id: swift-toolchain
+        if: steps.swift-package.outputs.present == 'true'
+        shell: bash
+        run: |
+          if command -v swift >/dev/null 2>&1; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Swift toolchain not available on this runner; PR024 owns the required Linux Static SDK gate"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        if: steps.swift-package.outputs.present == 'true' && steps.swift-toolchain.outputs.present == 'true'
+        working-directory: swift
+        run: swift build
+
+      - name: Test
+        if: steps.swift-package.outputs.present == 'true' && steps.swift-toolchain.outputs.present == 'true'
+        working-directory: swift
+        run: swift test

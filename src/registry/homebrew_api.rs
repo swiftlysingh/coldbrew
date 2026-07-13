@@ -5,10 +5,33 @@ use crate::error::{ColdbrewError, Result};
 use reqwest::header::{ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};
 use reqwest::Client;
 use reqwest::StatusCode;
+use std::env;
 use std::time::Duration;
 
 pub const FORMULA_INDEX_URL: &str = "https://formulae.brew.sh/api/formula.json";
 const FORMULA_URL: &str = "https://formulae.brew.sh/api/formula";
+const FORMULA_API_BASE_ENV: &str = "COLDBREW_FORMULA_API_BASE";
+
+pub fn formula_index_url() -> String {
+    match formula_api_base() {
+        Some(base) => format!("{}/formula.json", base),
+        None => FORMULA_INDEX_URL.to_string(),
+    }
+}
+
+fn formula_url(name: &str) -> String {
+    match formula_api_base() {
+        Some(base) => format!("{}/formula/{}.json", base, name),
+        None => format!("{}/{}.json", FORMULA_URL, name),
+    }
+}
+
+fn formula_api_base() -> Option<String> {
+    env::var(FORMULA_API_BASE_ENV)
+        .ok()
+        .map(|base| base.trim_end_matches('/').to_string())
+        .filter(|base| !base.is_empty())
+}
 
 #[derive(Debug, Clone)]
 pub struct CacheHeaders {
@@ -52,7 +75,8 @@ impl HomebrewApi {
         &self,
         cache: Option<&CacheHeaders>,
     ) -> Result<IndexFetchResult> {
-        let mut request = self.client.get(FORMULA_INDEX_URL);
+        let index_url = formula_index_url();
+        let mut request = self.client.get(&index_url);
         if let Some(cache) = cache {
             if let Some(ref etag) = cache.etag {
                 request = request.header(IF_NONE_MATCH, etag);
@@ -87,7 +111,7 @@ impl HomebrewApi {
 
     /// Fetch a single formula by name
     pub async fn fetch_formula(&self, name: &str) -> Result<Formula> {
-        let url = format!("{}/{}.json", FORMULA_URL, name);
+        let url = formula_url(name);
         let response = self.client.get(&url).send().await?;
 
         if response.status() == reqwest::StatusCode::NOT_FOUND {
@@ -108,7 +132,8 @@ impl HomebrewApi {
 
     /// Get the size of the formula index (for progress reporting)
     pub async fn get_index_size(&self) -> Result<u64> {
-        let response = self.client.head(FORMULA_INDEX_URL).send().await?;
+        let index_url = formula_index_url();
+        let response = self.client.head(&index_url).send().await?;
 
         Ok(response
             .headers()

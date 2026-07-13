@@ -1,0 +1,22 @@
+{
+  "name": "multi@2",
+  "full_name": "homebrew/core/multi@2",
+  "tap": "homebrew/core",
+  "desc": "Fixture versioned package v2",
+  "homepage": "https://example.test/multi",
+  "license": "MIT",
+  "versions": { "stable": "2.0.0", "bottle": true },
+  "bottle": {
+    "stable": {
+      "root_url": "http://127.0.0.1:0/bottles",
+      "files": {
+        "all": {
+          "cellar": ":any_skip_relocation",
+          "url": "http://127.0.0.1:0/bottles/multi@2-2.0.0.arm64_sonoma.bottle.tar.gz",
+          "sha256": "7339ad281b5e8f5b09a2e6385937bef93997a36c248d93cc89dd55a845c12dd9"
+        }
+      }
+    }
+  },
+  "dependencies": []
+}
