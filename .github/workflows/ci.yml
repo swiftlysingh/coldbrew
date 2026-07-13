@@ -286,3 +286,51 @@ jobs:
           CREW_BIN="$PWD/$SWIFT_STATIC_CREW" cargo test --tests
           CREW_BIN="$PWD/$SWIFT_STATIC_CREW" cargo test --test install_lifecycle_harness --test shim_exec_harness -- --ignored
           RUST_CREW_BIN="$PWD/target/debug/crew" SWIFT_CREW_BIN="$PWD/$SWIFT_STATIC_CREW" cargo test --test cross_binary_harness -- --ignored
+
+  swift-performance:
+    name: Swift performance gate
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binaries
+        run: |
+          cargo build --release --bin crew
+          swift build --package-path swift -c release --product crew
+
+      - name: Run performance gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          port_file="$RUNNER_TEMP/fixture-registry.port"
+          python3 harness/perf/fixture_registry.py --root tests/fixtures/registry --port-file "$port_file" &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for _ in {1..20}; do
+            [ -s "$port_file" ] && break
+            sleep 0.1
+          done
+          test -s "$port_file"
+          export COLDBREW_FORMULA_API_BASE="http://127.0.0.1:$(cat "$port_file")"
+          python3 harness/perf/crew_perf_gate.py \
+            --rust-bin target/release/crew \
+            --swift-bin swift/.build/release/crew \
+            --fixture-install-cmd '{crew} update && {crew} install hello' \
+            --real-install jq \
+            --real-install ffmpeg \
+            --report "$RUNNER_TEMP/perf-report.md" \
+            --json "$RUNNER_TEMP/perf-report.json"
+
+      - name: Upload performance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-performance-report
+          path: ${{ runner.temp }}/perf-report.*
