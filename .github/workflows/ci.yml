@@ -325,6 +325,7 @@ jobs:
             --fixture-install-cmd '{crew} update && {crew} install hello' \
             --real-install jq \
             --real-install ffmpeg \
+            --real-mode both \
             --report "$RUNNER_TEMP/perf-report.md" \
             --json "$RUNNER_TEMP/perf-report.json"
 
