@@ -10,8 +10,16 @@ struct NotImplemented: Error, CustomStringConvertible {
     }
 }
 
-func notImplemented(_ command: String) throws {
-    if CommandLine.arguments.contains("--verbose") {
+struct GlobalOutputOptions: ParsableArguments {
+    @Flag(name: .shortAndLong, help: "Enable verbose output")
+    var verbose = false
+
+    @Flag(name: .shortAndLong, help: "Suppress non-error output")
+    var quiet = false
+}
+
+func notImplemented(_ command: String, options: GlobalOutputOptions) throws {
+    if options.verbose {
         FileHandle.standardError.write(Data("[verbose] \(command)\n".utf8))
     }
     throw NotImplemented(command: command)
@@ -56,11 +64,7 @@ struct Crew: ParsableCommand {
         ]
     )
 
-    @Flag(name: .shortAndLong, help: "Enable verbose output")
-    var verbose = false
-
-    @Flag(name: .shortAndLong, help: "Suppress non-error output")
-    var quiet = false
+    @OptionGroup var output: GlobalOutputOptions
 
     func run() throws {
         throw CleanExit.helpRequest(self)
@@ -70,13 +74,17 @@ struct Crew: ParsableCommand {
 struct Update: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Update the package index from Homebrew")
 
+    @OptionGroup var output: GlobalOutputOptions
+
     func run() throws {
-        try notImplemented("update")
+        try notImplemented("update", options: output)
     }
 }
 
 struct Search: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Search for packages")
+
+    @OptionGroup var output: GlobalOutputOptions
 
     @Argument(help: "Search query")
     var query: String
@@ -85,12 +93,14 @@ struct Search: ParsableCommand {
     var extended = false
 
     func run() throws {
-        try notImplemented("search")
+        try notImplemented("search", options: output)
     }
 }
 
 struct Info: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Show information about a package")
+
+    @OptionGroup var output: GlobalOutputOptions
 
     @Argument(help: "Package name")
     var package: String
@@ -99,12 +109,14 @@ struct Info: ParsableCommand {
     var format = "text"
 
     func run() throws {
-        try notImplemented("info")
+        try notImplemented("info", options: output)
     }
 }
 
 struct Install: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Install packages")
+
+    @OptionGroup var output: GlobalOutputOptions
 
     @Argument(help: "Packages to install (e.g., jq, node@22)")
     var packages: [String]
@@ -128,12 +140,14 @@ struct Install: ParsableCommand {
     }
 
     func run() throws {
-        try notImplemented("install")
+        try notImplemented("install", options: output)
     }
 }
 
 struct Uninstall: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Uninstall packages")
+
+    @OptionGroup var output: GlobalOutputOptions
 
     @Argument(help: "Packages to uninstall")
     var packages: [String]
@@ -151,12 +165,14 @@ struct Uninstall: ParsableCommand {
     }
 
     func run() throws {
-        try notImplemented("uninstall")
+        try notImplemented("uninstall", options: output)
     }
 }
 
 struct Upgrade: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Upgrade installed packages")
+
+    @OptionGroup var output: GlobalOutputOptions
 
     @Argument(help: "Packages to upgrade (all if not specified)")
     var packages: [String] = []
@@ -165,12 +181,14 @@ struct Upgrade: ParsableCommand {
     var yes = false
 
     func run() throws {
-        try notImplemented("upgrade")
+        try notImplemented("upgrade", options: output)
     }
 }
 
 struct List: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "List installed packages")
+
+    @OptionGroup var output: GlobalOutputOptions
 
     @Flag(name: .shortAndLong, help: "Show only package names")
     var namesOnly = false
@@ -179,86 +197,102 @@ struct List: ParsableCommand {
     var versions: String?
 
     func run() throws {
-        try notImplemented("list")
+        try notImplemented("list", options: output)
     }
 }
 
 struct Which: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Show which package provides a binary")
 
+    @OptionGroup var output: GlobalOutputOptions
+
     @Argument(help: "Binary name")
     var binary: String
 
     func run() throws {
-        try notImplemented("which")
+        try notImplemented("which", options: output)
     }
 }
 
 struct Pin: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Pin a package to prevent upgrades")
 
+    @OptionGroup var output: GlobalOutputOptions
+
     @Argument(help: "Package to pin")
     var package: String
 
     func run() throws {
-        try notImplemented("pin")
+        try notImplemented("pin", options: output)
     }
 }
 
 struct Unpin: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Unpin a package to allow upgrades")
 
+    @OptionGroup var output: GlobalOutputOptions
+
     @Argument(help: "Package to unpin")
     var package: String
 
     func run() throws {
-        try notImplemented("unpin")
+        try notImplemented("unpin", options: output)
     }
 }
 
 struct Default: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Set or show the default version for a package")
 
+    @OptionGroup var output: GlobalOutputOptions
+
     @Argument(help: "Package name (e.g., node@22 or just node to show current)")
     var package: String
 
     func run() throws {
-        try notImplemented("default")
+        try notImplemented("default", options: output)
     }
 }
 
 struct Dependents: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Show packages that depend on a package")
 
+    @OptionGroup var output: GlobalOutputOptions
+
     @Argument(help: "Package name")
     var package: String
 
     func run() throws {
-        try notImplemented("dependents")
+        try notImplemented("dependents", options: output)
     }
 }
 
 struct Init: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Initialize a new coldbrew.toml in the current directory")
 
+    @OptionGroup var output: GlobalOutputOptions
+
     @Flag(name: .shortAndLong, help: "Force overwrite if file exists")
     var force = false
 
     func run() throws {
-        try notImplemented("init")
+        try notImplemented("init", options: output)
     }
 }
 
 struct Lock: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Generate a lockfile from coldbrew.toml")
 
+    @OptionGroup var output: GlobalOutputOptions
+
     func run() throws {
-        try notImplemented("lock")
+        try notImplemented("lock", options: output)
     }
 }
 
 struct Tap: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Add or remove taps (third-party repositories)")
+
+    @OptionGroup var output: GlobalOutputOptions
 
     @Argument(help: "Tap to add (user/repo format)")
     var tap: String?
@@ -267,7 +301,7 @@ struct Tap: ParsableCommand {
     var remove = false
 
     func run() throws {
-        try notImplemented("tap")
+        try notImplemented("tap", options: output)
     }
 }
 
@@ -277,23 +311,29 @@ struct Space: ParsableCommand {
         subcommands: [Show.self, Clean.self]
     )
 
+    @OptionGroup var output: GlobalOutputOptions
+
     func run() throws {
-        try notImplemented("space")
+        try notImplemented("space", options: output)
     }
 
     struct Show: ParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Show disk usage and cleanup candidates")
 
+        @OptionGroup var output: GlobalOutputOptions
+
         @Flag(name: .shortAndLong, help: "Show itemized details")
         var details = false
 
         func run() throws {
-            try notImplemented("space show")
+            try notImplemented("space show", options: output)
         }
     }
 
     struct Clean: ParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Cleanup old versions, cache, and other unused data")
+
+        @OptionGroup var output: GlobalOutputOptions
 
         @Flag(name: .shortAndLong, help: "Clean everything without prompts")
         var all = false
@@ -302,13 +342,15 @@ struct Space: ParsableCommand {
         var dryRun = false
 
         func run() throws {
-            try notImplemented("space clean")
+            try notImplemented("space clean", options: output)
         }
     }
 }
 
 struct Link: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Force-link a keg-only package")
+
+    @OptionGroup var output: GlobalOutputOptions
 
     @Argument(help: "Package to link")
     var package: String
@@ -317,37 +359,43 @@ struct Link: ParsableCommand {
     var force = false
 
     func run() throws {
-        try notImplemented("link")
+        try notImplemented("link", options: output)
     }
 }
 
 struct Unlink: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Remove links for a package")
 
+    @OptionGroup var output: GlobalOutputOptions
+
     @Argument(help: "Package to unlink")
     var package: String
 
     func run() throws {
-        try notImplemented("unlink")
+        try notImplemented("unlink", options: output)
     }
 }
 
 struct Doctor: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Check system for potential problems")
 
+    @OptionGroup var output: GlobalOutputOptions
+
     func run() throws {
-        try notImplemented("doctor")
+        try notImplemented("doctor", options: output)
     }
 }
 
 struct Completions: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Generate shell completions")
 
+    @OptionGroup var output: GlobalOutputOptions
+
     @Argument(help: "Shell to generate completions for")
     var shell: CompletionShell
 
     func run() throws {
-        try notImplemented("completions")
+        try notImplemented("completions", options: output)
     }
 }
 
@@ -356,6 +404,8 @@ struct Exec: ParsableCommand {
         abstract: "Execute a binary from a package (internal use)",
         shouldDisplay: false
     )
+
+    @OptionGroup var output: GlobalOutputOptions
 
     @Argument(help: "Package name")
     var package: String
@@ -367,6 +417,6 @@ struct Exec: ParsableCommand {
     var args: [String] = []
 
     func run() throws {
-        try notImplemented("exec")
+        try notImplemented("exec", options: output)
     }
 }

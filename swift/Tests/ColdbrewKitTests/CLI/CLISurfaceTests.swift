@@ -84,9 +84,30 @@ import Testing
 @Test func globalOutputFlagsAreFunctional() throws {
     let quiet = try runCrew("--quiet", "list")
     let verbose = try runCrew("--verbose", "list")
+    let subcommandQuiet = try runCrew("list", "--quiet")
+    let subcommandVerbose = try runCrew("list", "--verbose")
 
     #expect(!quiet.text.contains("[verbose]"))
     #expect(verbose.text.contains("[verbose] list"))
+    #expect(!subcommandQuiet.text.contains("[verbose]"))
+    #expect(subcommandVerbose.text.contains("[verbose] list"))
+}
+
+@Test func everyCommandAcceptsGlobalOutputFlagsAfterItsCommandPath() throws {
+    let commands = [
+        ["update"], ["search"], ["info"], ["install"], ["uninstall"], ["upgrade"], ["list"],
+        ["which"], ["pin"], ["unpin"], ["default"], ["dependents"], ["init"], ["lock"], ["tap"],
+        ["space"], ["space", "show"], ["space", "clean"], ["link"], ["unlink"], ["doctor"],
+        ["completions"], ["exec"],
+    ]
+
+    for command in commands {
+        for flag in ["--quiet", "--verbose"] {
+            let output = try runCrew(command + [flag, "--help"])
+
+            #expect(output.status == 0)
+        }
+    }
 }
 
 private struct CrewOutput {
