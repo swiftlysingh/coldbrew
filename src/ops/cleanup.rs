@@ -174,7 +174,7 @@ pub fn apply_cleanup(
 
                     if remove_shims && !dry_run {
                         let binaries: Vec<String> = binaries.into_iter().collect();
-                        shim_manager.remove_shims(&binaries)?;
+                        shim_manager.remove_shims(&name, &binaries)?;
                         config.remove_default(&name);
                         config.remove_pin(&name);
                         config_dirty = true;

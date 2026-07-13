@@ -27,6 +27,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate Swift cutover gates
+        run: python3 .github/scripts/check-swift-cutover.py
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:

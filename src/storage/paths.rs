@@ -14,6 +14,10 @@ pub struct Paths {
 impl Paths {
     /// Create a new Paths instance with the default root (~/.coldbrew)
     pub fn new() -> Result<Self> {
+        if let Some(root) = coldbrew_home_override(std::env::var_os("COLDBREW_HOME")) {
+            return Ok(Self { root });
+        }
+
         let base_dirs = BaseDirs::new().ok_or_else(|| {
             ColdbrewError::Other("Could not determine home directory".to_string())
         })?;
@@ -33,6 +37,7 @@ impl Paths {
             self.root(),
             &self.bin_dir(),
             &self.cellar_dir(),
+            &self.opt_dir(),
             &self.cache_dir(),
             &self.cache_blobs_dir(),
             &self.taps_dir(),
@@ -66,6 +71,11 @@ impl Paths {
     /// Cellar directory for installed packages (~/.coldbrew/cellar)
     pub fn cellar_dir(&self) -> PathBuf {
         self.root.join("cellar")
+    }
+
+    /// Stable links to installed package versions (~/.coldbrew/opt)
+    pub fn opt_dir(&self) -> PathBuf {
+        self.root.join("opt")
     }
 
     /// Cache directory for downloads (~/.coldbrew/cache)
@@ -132,6 +142,11 @@ impl Paths {
     /// e.g., ~/.coldbrew/cellar/jq/1.7.1
     pub fn cellar_package(&self, name: &str, version: &str) -> PathBuf {
         self.cellar_dir().join(name).join(version)
+    }
+
+    /// Stable link for a package (~/.coldbrew/opt/jq)
+    pub fn opt_package(&self, name: &str) -> PathBuf {
+        self.opt_dir().join(name)
     }
 
     /// Get the tap directory for a specific tap
@@ -204,6 +219,10 @@ impl Paths {
     }
 }
 
+fn coldbrew_home_override(value: Option<std::ffi::OsString>) -> Option<PathBuf> {
+    value.filter(|path| !path.is_empty()).map(PathBuf::from)
+}
+
 impl Default for Paths {
     fn default() -> Self {
         Self::new().expect("Failed to initialize paths")
@@ -273,12 +292,23 @@ mod tests {
 
         assert_eq!(paths.bin_dir(), temp.path().join("bin"));
         assert_eq!(paths.cellar_dir(), temp.path().join("cellar"));
+        assert_eq!(paths.opt_dir(), temp.path().join("opt"));
         assert_eq!(paths.cache_dir(), temp.path().join("cache"));
         assert_eq!(
             paths.cache_blobs_dir(),
             temp.path().join("cache").join("blobs")
         );
         assert_eq!(paths.store_dir(), temp.path().join("store"));
+    }
+
+    #[test]
+    fn test_coldbrew_home_override_ignores_empty_values() {
+        assert_eq!(
+            coldbrew_home_override(Some("/tmp/custom-coldbrew".into())),
+            Some(PathBuf::from("/tmp/custom-coldbrew"))
+        );
+        assert_eq!(coldbrew_home_override(Some("".into())), None);
+        assert_eq!(coldbrew_home_override(None), None);
     }
 
     #[test]
@@ -302,6 +332,7 @@ mod tests {
 
         assert!(paths.bin_dir().exists());
         assert!(paths.cellar_dir().exists());
+        assert!(paths.opt_dir().exists());
         assert!(paths.cache_dir().exists());
         assert!(paths.cache_blobs_dir().exists());
         assert!(paths.store_dir().exists());

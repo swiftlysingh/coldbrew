@@ -4,7 +4,7 @@ use crate::core::package::{InstalledPackage, PackageMetadata};
 use crate::error::{ColdbrewError, Result};
 use crate::storage::paths::Paths;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Manages the cellar where packages are installed
 pub struct Cellar {
@@ -97,6 +97,26 @@ impl Cellar {
         Ok(versions.last().cloned())
     }
 
+    /// Point opt/<name> at the latest installed version, or remove it.
+    pub fn update_opt_link(&self, name: &str) -> Result<()> {
+        let link = self.paths.opt_package(name);
+        match fs::symlink_metadata(&link) {
+            Ok(_) => fs::remove_file(&link)?,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err.into()),
+        }
+
+        if let Some(version) = self.latest_version(name)? {
+            fs::create_dir_all(self.paths.opt_dir())?;
+            create_symlink(
+                &Path::new("..").join("cellar").join(name).join(version),
+                &link,
+            )?;
+        }
+
+        Ok(())
+    }
+
     /// Install a package by extracting a bottle
     pub fn install(
         &self,
@@ -172,6 +192,8 @@ impl Cellar {
             fs::remove_dir(&pkg_dir)?;
         }
 
+        self.update_opt_link(name)?;
+
         Ok(())
     }
 
@@ -230,6 +252,19 @@ impl Cellar {
     }
 }
 
+#[cfg(unix)]
+fn create_symlink(target: &Path, link: &Path) -> Result<()> {
+    std::os::unix::fs::symlink(target, link)?;
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn create_symlink(_target: &Path, _link: &Path) -> Result<()> {
+    Err(ColdbrewError::Other(
+        "Symlinks not supported on this platform".to_string(),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,5 +292,31 @@ mod tests {
 
         assert!(cellar.is_installed("jq", "1.7.1"));
         assert!(!cellar.is_installed("jq", "1.7.0"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_opt_link_follows_latest_installed_version() {
+        let temp = TempDir::new().unwrap();
+        let paths = Paths::with_root(temp.path().to_path_buf());
+        let cellar = Cellar::new(paths.clone());
+
+        fs::create_dir_all(paths.cellar_package("ffmpeg", "7.1")).unwrap();
+        cellar.update_opt_link("ffmpeg").unwrap();
+        assert_eq!(
+            fs::read_link(paths.opt_package("ffmpeg")).unwrap(),
+            Path::new("..").join("cellar/ffmpeg/7.1")
+        );
+
+        fs::create_dir_all(paths.cellar_package("ffmpeg", "8.0")).unwrap();
+        cellar.update_opt_link("ffmpeg").unwrap();
+        cellar.uninstall("ffmpeg", "8.0").unwrap();
+        assert_eq!(
+            fs::read_link(paths.opt_package("ffmpeg")).unwrap(),
+            Path::new("..").join("cellar/ffmpeg/7.1")
+        );
+
+        cellar.uninstall("ffmpeg", "7.1").unwrap();
+        assert!(fs::symlink_metadata(paths.opt_package("ffmpeg")).is_err());
     }
 }

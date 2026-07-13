@@ -14,6 +14,7 @@ A Homebrew-compatible package manager in Rust - user-controlled, fast, and repro
 
 - Core principles, CLI behavior, and Homebrew integration: `docs/core-principles-homebrew.md`
 - Parallel install pipeline plan: `docs/parallel-pipeline.md`
+- Swift cutover prep gates: `docs/swift-cutover-prep.md`
 
 ## Installation
 
@@ -38,6 +39,8 @@ git clone https://github.com/swiftlysingh/coldbrew
 cd coldbrew
 cargo install --path .
 ```
+
+The source install path remains Rust-based until the Swift cutover gates pass.
 
 
 ## Quick Start
