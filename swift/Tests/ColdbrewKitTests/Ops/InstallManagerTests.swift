@@ -48,6 +48,21 @@ import Testing
     #expect(forced.packages.map(\.name) == ["hello"])
 }
 
+@Test func installManagerDiscoversBottleBinaryNames() async throws {
+    let root = temporaryDirectory()
+    let paths = Paths(root: root.appendingPathComponent("coldbrew", isDirectory: true))
+    let bottle = try makeInstallBottle(root: root, name: "ripgrep", version: "1.0.0", binary: "rg")
+
+    _ = try await InstallManager(paths: paths).install([
+        InstallRequest(name: "ripgrep", version: "1.0.0", bottleURL: bottle.url, sha256: bottle.sha, tag: "fixture", binaries: ["ripgrep"]),
+    ])
+
+    #expect(FileManager.default.fileExists(atPath: paths.shim("rg").path))
+    #expect(!FileManager.default.fileExists(atPath: paths.shim("ripgrep").path))
+    #expect(try Cellar(paths: paths).package(name: "ripgrep", version: "1.0.0").binaries == ["rg"])
+    #expect(try FileManager.default.destinationOfSymbolicLink(atPath: paths.root.appendingPathComponent("opt/ripgrep").path) == paths.cellarPackage("ripgrep", version: "1.0.0").path)
+}
+
 @Test func forceInstallRestoresWorkingPackageWhenReplacementFailsAfterSwap() async throws {
     let root = temporaryDirectory()
     let paths = Paths(root: root.appendingPathComponent("coldbrew", isDirectory: true))
@@ -68,6 +83,7 @@ import Testing
     let binary = paths.cellarPackage("hello", version: "1.0.0").appendingPathComponent("bin/hello")
     #expect(try String(contentsOf: binary).contains("old"))
     #expect(try Cellar(paths: paths).package(name: "hello", version: "1.0.0").bottleSha256 == old.sha)
+    #expect(try storeRefCount(paths: paths, package: "hello", version: "1.0.0") == 1)
 }
 
 private func makeInstallBottle(root: URL, name: String, version: String, binary: String, output: String? = nil, poisonMetadata: Bool = false) throws -> (url: URL, sha: String) {

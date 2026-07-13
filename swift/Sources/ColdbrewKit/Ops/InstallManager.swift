@@ -85,6 +85,7 @@ public struct InstallManager: Sendable {
                 .appendingPathComponent(".\(request.version).\(UUID().uuidString).staging")
             let backup = installPath.deletingLastPathComponent()
                 .appendingPathComponent(".\(request.version).\(UUID().uuidString).backup")
+            let oldSHA = replacing ? try? cellar.package(name: request.name, version: request.version).bottleSha256 : nil
             var swapped = false
             defer { try? FileManager.default.removeItem(at: staging) }
 
@@ -109,6 +110,7 @@ public struct InstallManager: Sendable {
                 }
             }
 
+            let binaries = try cellar.binaries(name: request.name, version: request.version)
             var package = InstalledPackageRecord(
                 name: request.name,
                 version: request.version,
@@ -118,22 +120,30 @@ public struct InstallManager: Sendable {
                 linked: false,
                 bottleTag: request.tag,
                 bottleSha256: request.sha256,
-                binaries: request.binaries,
+                binaries: binaries,
                 installedAsDependency: request.installedAsDependency,
                 installedFor: request.installedFor
             )
 
             do {
-                if options.link, !request.binaries.isEmpty {
-                    try ShimManager(paths: paths).createShims(name: request.name, version: request.version, binaries: request.binaries)
+                if options.link, !binaries.isEmpty {
+                    try ShimManager(paths: paths).createShims(name: request.name, version: request.version, binaries: binaries)
                     package.linked = true
                 }
                 try cellar.saveMetadata(PackageMetadataRecord(package: package, receipt: InstallReceiptRecord(source: request.bottleURL.absoluteString)))
                 try db.addStoreRef(connection, sha256: request.sha256, package: request.name, version: request.version)
+                try refreshOptLink(name: request.name, cellar: cellar)
+                if let oldSHA, oldSHA != request.sha256 {
+                    try db.removeStoreRef(connection, sha256: oldSHA, package: request.name, version: request.version)
+                }
             } catch {
                 if swapped {
                     try? FileManager.default.removeItem(at: installPath)
                     try? FileManager.default.moveItem(at: backup, to: installPath)
+                    try? db.removeStoreRef(connection, sha256: request.sha256, package: request.name, version: request.version)
+                    if let oldSHA {
+                        try? db.addStoreRef(connection, sha256: oldSHA, package: request.name, version: request.version)
+                    }
                 }
                 throw error
             }
@@ -178,6 +188,21 @@ public struct InstallManager: Sendable {
             index += limit
         }
         return results
+    }
+
+    private func refreshOptLink(name: String, cellar: Cellar) throws {
+        let optDir = paths.root.appendingPathComponent("opt", isDirectory: true)
+        let link = optDir.appendingPathComponent(name)
+        if FileManager.default.fileExists(atPath: link.path)
+            || (try? FileManager.default.destinationOfSymbolicLink(atPath: link.path)) != nil {
+            try FileManager.default.removeItem(at: link)
+        }
+        guard let version = try cellar.latestVersion(name: name) else { return }
+        try FileManager.default.createDirectory(at: optDir, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: link,
+            withDestinationURL: paths.cellarPackage(name, version: version)
+        )
     }
 }
 
