@@ -176,6 +176,10 @@ jobs:
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Install SQLite development headers
+        if: matrix.name == 'linux' && steps.swift-package.outputs.present == 'true' && steps.swift-toolchain.outputs.present == 'true'
+        run: sudo apt-get update && sudo apt-get install --yes libsqlite3-dev
+
       - name: Build
         if: steps.swift-package.outputs.present == 'true' && steps.swift-toolchain.outputs.present == 'true'
         working-directory: swift
