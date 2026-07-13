@@ -287,8 +287,12 @@ mod tests {
         paths.init().unwrap();
         let manager = ShimManager::new(paths.clone());
 
-        manager.create_shims("other", "1.0", &["tool".to_string()]).unwrap();
-        manager.remove_shims("package", &["tool".to_string()]).unwrap();
+        manager
+            .create_shims("other", "1.0", &["tool".to_string()])
+            .unwrap();
+        manager
+            .remove_shims("package", &["tool".to_string()])
+            .unwrap();
 
         assert_eq!(manager.list_shims().unwrap()[0].package, "other");
     }

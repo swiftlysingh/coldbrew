@@ -148,8 +148,7 @@ fn version_file_takes_precedence_over_global_default_and_latest() {
             .expect("copy multi-version fixture binary");
 
         let mut metadata: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(source.join(".coldbrew.json"))
-                .expect("read fixture metadata"),
+            &std::fs::read_to_string(source.join(".coldbrew.json")).expect("read fixture metadata"),
         )
         .expect("decode fixture metadata");
         metadata["package"]["name"] = "multi".into();
