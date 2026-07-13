@@ -226,7 +226,6 @@ jobs:
         run: |
           set -euo pipefail
           swift sdk install "$SWIFT_STATIC_SDK_URL" --checksum "$SWIFT_STATIC_SDK_CHECKSUM"
-          swift sdk list | grep -F "$SWIFT_STATIC_SDK_ID"
 
       - name: Test Swift package with Static Linux SDK
         working-directory: swift
