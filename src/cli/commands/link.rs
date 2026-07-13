@@ -95,7 +95,7 @@ pub async fn execute_unlink(package: &str, output: &Output) -> Result<()> {
         return Ok(());
     }
 
-    shim_manager.remove_shims(&binaries)?;
+    shim_manager.remove_shims(&name, &binaries)?;
 
     output.success(&format!(
         "Unlinked {} ({} binaries)",

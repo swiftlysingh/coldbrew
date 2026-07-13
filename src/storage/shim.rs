@@ -76,15 +76,17 @@ exec crew exec {package} {binary} "$@"
     }
 
     /// Remove shims for a package
-    pub fn remove_shims(&self, binaries: &[String]) -> Result<()> {
+    pub fn remove_shims(&self, package: &str, binaries: &[String]) -> Result<()> {
         let _lock = ShimLock::acquire(self.paths.shims_lock())?;
         let bin_dir = self.paths.bin_dir();
 
         for binary in binaries {
             let shim_path = bin_dir.join(binary);
             if shim_path.exists() {
-                // Check if it's a coldbrew shim before removing
-                if self.is_coldbrew_shim(&shim_path)? {
+                let content = fs::read_to_string(&shim_path)?;
+                if content.contains("# Coldbrew shim")
+                    && self.parse_shim_package(&content).as_deref() == Some(package)
+                {
                     fs::remove_file(&shim_path)?;
                 }
             }
@@ -276,5 +278,18 @@ mod tests {
         assert_eq!(shims.len(), 1);
         assert_eq!(shims[0].name, "jq");
         assert_eq!(shims[0].package, "jq");
+    }
+
+    #[test]
+    fn remove_shims_keeps_another_packages_shim() {
+        let temp = TempDir::new().unwrap();
+        let paths = Paths::with_root(temp.path().to_path_buf());
+        paths.init().unwrap();
+        let manager = ShimManager::new(paths.clone());
+
+        manager.create_shims("other", "1.0", &["tool".to_string()]).unwrap();
+        manager.remove_shims("package", &["tool".to_string()]).unwrap();
+
+        assert_eq!(manager.list_shims().unwrap()[0].package, "other");
     }
 }
