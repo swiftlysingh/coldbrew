@@ -214,7 +214,7 @@ jobs:
           archive="${SWIFT_TOOLCHAIN_URL##*/}"
           curl --proto '=https' --tlsv1.2 -fsSLO "$SWIFT_TOOLCHAIN_URL"
           curl --proto '=https' --tlsv1.2 -fsSLO "$SWIFT_TOOLCHAIN_URL.sig"
-          curl --proto '=https' --tlsv1.2 -fsSL https://www.swift.org/keys/all-keys.asc | gpg --batch --import
+          curl --compressed --proto '=https' --tlsv1.2 -fsSL https://www.swift.org/keys/all-keys.asc | gpg --batch --import
           gpg --batch --verify "$archive.sig" "$archive"
           mkdir -p "$RUNNER_TEMP/swift"
           tar -xzf "$archive" --strip-components=1 -C "$RUNNER_TEMP/swift"

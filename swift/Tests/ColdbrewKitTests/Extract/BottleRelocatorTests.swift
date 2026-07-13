@@ -10,7 +10,11 @@ import Testing
 
     let summary = try BottleRelocator(paths: Paths(root: root)).relocateBottle(at: install)
 
+    #if os(macOS)
     #expect(summary.scannedFiles == 1)
+    #else
+    #expect(summary.scannedFiles == 0)
+    #endif
     #expect(summary.machOFiles == 0)
     #expect(summary.relocatedFiles == 0)
     #expect(summary.unhandledPlaceholders == 0)
