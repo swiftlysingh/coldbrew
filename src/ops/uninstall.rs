@@ -151,7 +151,10 @@ pub fn find_orphan_dependencies(
         }
         excluded.extend(new_orphans);
     }
-    let mut result: Vec<_> = excluded.into_iter().filter(|p| !removed_packages.contains(p)).collect();
+    let mut result: Vec<_> = excluded
+        .into_iter()
+        .filter(|p| !removed_packages.contains(p))
+        .collect();
     result.sort();
     result
 }
@@ -216,7 +219,10 @@ mod tests {
         ];
         assert_eq!(
             find_orphan_dependencies(&installed, &removed("app")),
-            vec![("dep".into(), "1.0".into()), ("nested".into(), "1.0".into())]
+            vec![
+                ("dep".into(), "1.0".into()),
+                ("nested".into(), "1.0".into())
+            ]
         );
     }
 
