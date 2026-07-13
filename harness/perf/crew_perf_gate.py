@@ -109,6 +109,8 @@ def real_install(binary: Path, package: str, warm: bool, timeout: int) -> float:
         home = Path(tmp) / "home"
         home.mkdir()
         env = base_env(home)
+        env.pop("COLDBREW_FORMULA_API_BASE", None)
+        run_checked([str(binary), "update"], env=env, timeout=timeout)
         if warm:
             run_checked([str(binary), "install", package], env=env, timeout=timeout)
             return run_checked([str(binary), "install", "--force", package], env=env, timeout=timeout)
